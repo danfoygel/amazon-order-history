@@ -1,0 +1,488 @@
+"use strict";
+
+// ---------------------------------------------------------------------------
+// State
+// ---------------------------------------------------------------------------
+let allItems = [];
+let currentFilter = "combined";
+let currentSearch = "";
+
+// ---------------------------------------------------------------------------
+// Kept items (localStorage)
+// ---------------------------------------------------------------------------
+const KEPT_KEY = "amazon_order_history_kept";
+
+function loadKept() {
+  try { return new Set(JSON.parse(localStorage.getItem(KEPT_KEY)) || []); }
+  catch { return new Set(); }
+}
+function saveKept(set) {
+  localStorage.setItem(KEPT_KEY, JSON.stringify([...set]));
+}
+function isKept(item) { return keptIds.has(item.item_id); }
+function toggleKept(item) {
+  if (keptIds.has(item.item_id)) { keptIds.delete(item.item_id); }
+  else { keptIds.add(item.item_id); }
+  saveKept(keptIds);
+}
+
+let keptIds = loadKept();
+
+// ---------------------------------------------------------------------------
+// Filtering & sorting
+// ---------------------------------------------------------------------------
+function filterItems(items, tab, searchQuery) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  return items.filter(item => {
+    let tabMatch;
+    if (tab === "all") {
+      tabMatch = true;
+    } else if (tab === "mail_back") {
+      const status = effectiveStatus(item);
+      tabMatch = (status === "Return Started" || status === "Replacement Ordered") && !isKept(item);
+    } else if (tab === "decide") {
+      if (effectiveStatus(item) !== "Delivered") { tabMatch = false; }
+      else if (isKept(item)) { tabMatch = false; }
+      else if (!item.return_window_end) { tabMatch = false; }
+      else {
+        const end = new Date(item.return_window_end + "T00:00:00");
+        tabMatch = end >= today;
+      }
+    } else {
+      tabMatch = effectiveStatus(item) === tab;
+    }
+    if (!tabMatch) return false;
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      (item.title || "").toLowerCase().includes(q) ||
+      (item.asin || "").toLowerCase().includes(q) ||
+      (item.order_id || "").toLowerCase().includes(q)
+    );
+  });
+}
+
+function sortItems(items, sort) {
+  const arr = [...items];
+  switch (sort) {
+    case "order_date_asc":
+      return arr.sort((a, b) => (a.order_date || "").localeCompare(b.order_date || ""));
+    case "order_date_desc":
+      return arr.sort((a, b) => (b.order_date || "").localeCompare(a.order_date || ""));
+    case "price_desc":
+      return arr.sort((a, b) => (b.unit_price ?? 0) - (a.unit_price ?? 0));
+    case "price_asc":
+      return arr.sort((a, b) => (a.unit_price ?? 0) - (b.unit_price ?? 0));
+    case "return_window_asc":
+      return arr.sort((a, b) => {
+        if (!a.return_window_end && !b.return_window_end) return 0;
+        if (!a.return_window_end) return 1;
+        if (!b.return_window_end) return -1;
+        return a.return_window_end.localeCompare(b.return_window_end);
+      });
+    case "expected_delivery_asc":
+      return arr.sort((a, b) => {
+        if (!a.expected_delivery && !b.expected_delivery) return 0;
+        if (!a.expected_delivery) return 1;
+        if (!b.expected_delivery) return -1;
+        return a.expected_delivery.localeCompare(b.expected_delivery);
+      });
+    default:
+      return arr;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Tab counts
+// ---------------------------------------------------------------------------
+function computeTabCounts(items) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const counts = {
+    all: items.length,
+    Delivered: 0,
+    Shipped: 0,
+    Ordered: 0,
+    Cancelled: 0,
+    "Return Started": 0,
+    "Return in Transit": 0,
+    "Return Complete": 0,
+    "Replacement Ordered": 0,
+    mail_back: 0,
+    decide: 0,
+  };
+  for (const item of items) {
+    const status = effectiveStatus(item);
+    if (counts[status] !== undefined) counts[status]++;
+    if ((status === "Return Started" || status === "Replacement Ordered") && !isKept(item)) {
+      counts.mail_back++;
+    }
+    if (status === "Delivered" && !isKept(item) && item.return_window_end) {
+      const end = new Date(item.return_window_end + "T00:00:00");
+      if (end >= today) counts.decide++;
+    }
+  }
+  return counts;
+}
+
+function renderTabCounts(items) {
+  const counts = computeTabCounts(items);
+  document.querySelectorAll(".tab").forEach(btn => {
+    const filter = btn.dataset.filter;
+    const countEl = btn.querySelector(".count");
+    if (countEl && counts[filter] !== undefined) {
+      countEl.textContent = counts[filter];
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Formatting helpers
+// ---------------------------------------------------------------------------
+function formatDate(isoStr) {
+  if (!isoStr) return "—";
+  const d = new Date(isoStr + "T00:00:00");
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+function formatPrice(val) {
+  if (val === null || val === undefined) return "—";
+  return "$" + Number(val).toFixed(2);
+}
+
+function statusBadgeHtml(status) {
+  const map = {
+    "Delivered":           ["badge-delivered",      "Delivered"],
+    "Shipped":             ["badge-in-transit",      "Shipped"],
+    "Ordered":             ["badge-pending",         "Ordered"],
+    "Cancelled":           ["badge-cancelled",       "Cancelled"],
+    "Return Started":      ["badge-return-started",  "Return Started"],
+    "Return in Transit":   ["badge-return-transit",  "Return in Transit"],
+    "Return Complete":     ["badge-return-complete", "Return Complete"],
+    "Replacement Ordered": ["badge-replacement",     "Replacement Ordered"],
+  };
+  const [cls, label] = map[status] || ["badge-pending", status || "Unknown"];
+  return `<span class="badge ${cls}">${label}</span>`;
+}
+
+function escHtml(str) {
+  return String(str ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function orderUrl(item) {
+  if (!item.order_id) return null;
+  return `https://www.amazon.com/gp/your-account/order-details?orderID=${encodeURIComponent(item.order_id)}`;
+}
+
+// ---------------------------------------------------------------------------
+// Effective display status (Return Started items kept >30 days past deadline
+// are treated as Delivered for display purposes)
+// ---------------------------------------------------------------------------
+function effectiveStatus(item) {
+  if (item.item_status === "Return Started" && item.return_window_end) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const end = new Date(item.return_window_end + "T00:00:00");
+    const daysOverdue = Math.ceil((today - end) / (1000 * 60 * 60 * 24));
+    if (daysOverdue > 30) return "Delivered";
+  }
+  return item.item_status;
+}
+
+// ---------------------------------------------------------------------------
+// Return window badge (Delivered and Return Started items)
+// ---------------------------------------------------------------------------
+function returnWindowHtml(item) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const status = effectiveStatus(item);
+
+  if (status === "Delivered") {
+    if (!item.return_window_end) return "";
+    const end = new Date(item.return_window_end + "T00:00:00");
+    const daysLeft = Math.ceil((end - today) / (1000 * 60 * 60 * 24));
+    if (daysLeft < 0) {
+      return `<span class="badge return-badge-closed">Return window closed</span>`;
+    }
+    if (daysLeft <= 7) {
+      return `<span class="badge return-badge-warn">⚠ Return by ${formatDate(item.return_window_end)} (${daysLeft}d left)</span>`;
+    }
+    return `<span class="badge return-badge-ok">Return by ${formatDate(item.return_window_end)}</span>`;
+  }
+
+  if (status === "Return Started" || status === "Replacement Ordered") {
+    if (!item.return_window_end) return "";
+    const end = new Date(item.return_window_end + "T00:00:00");
+    const daysLeft = Math.ceil((end - today) / (1000 * 60 * 60 * 24));
+    if (daysLeft < 0) {
+      return `<span class="badge return-badge-overdue">Mail back by ${formatDate(item.return_window_end)}</span>`;
+    }
+    if (daysLeft <= 7) {
+      return `<span class="badge return-badge-warn">⚠ Mail back by ${formatDate(item.return_window_end)} (${daysLeft}d left)</span>`;
+    }
+    return `<span class="badge return-badge-ok">Mail back by ${formatDate(item.return_window_end)}</span>`;
+  }
+
+  return "";
+}
+
+// ---------------------------------------------------------------------------
+// Thumbnail
+// ---------------------------------------------------------------------------
+function thumbnailHtml(item) {
+  if (!item.image_link) return "";
+  const href = orderUrl(item);
+  const wrap = href
+    ? `<a href="${escHtml(href)}" target="_blank" rel="noopener" class="card-thumb-link">`
+    : `<div class="card-thumb-link">`;
+  const closeWrap = href ? `</a>` : `</div>`;
+  return `${wrap}<img class="card-thumb" src="${escHtml(item.image_link)}" alt="" loading="lazy" onerror="this.closest('.card-thumb-link').style.display='none'">${closeWrap}`;
+}
+
+// ---------------------------------------------------------------------------
+// Card rendering
+// ---------------------------------------------------------------------------
+function isDecideEligible(item) {
+  if (effectiveStatus(item) !== "Delivered") return false;
+  if (!item.return_window_end) return false;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  return new Date(item.return_window_end + "T00:00:00") >= today;
+}
+
+function isMailBackEligible(item) {
+  const s = effectiveStatus(item);
+  return s === "Return Started" || s === "Replacement Ordered";
+}
+
+function renderCard(item) {
+  const href = orderUrl(item);
+  const titleHtml = href
+    ? `<a href="${escHtml(href)}" target="_blank" rel="noopener">${escHtml(item.title)}</a>`
+    : escHtml(item.title);
+
+  const priceHtml = item.unit_price !== null && item.unit_price !== undefined
+    ? `<span class="price">${formatPrice(item.unit_price)}${item.quantity > 1 ? ` × ${item.quantity}` : ""}</span>`
+    : "";
+
+  const etaLabel = item.item_status === "Ordered" ? "Expected" : "Arrives";
+  const expectedDeliveryHtml = item.expected_delivery
+    ? `<span class="delivery-eta">${etaLabel} ${formatDate(item.expected_delivery)}</span>`
+    : "";
+
+  const article = document.createElement("article");
+  article.className = "item-card";
+  article.dataset.itemId = item.item_id;
+
+  const kept = isKept(item);
+  const showKeep = isDecideEligible(item) || isMailBackEligible(item);
+  const keepTitle = isMailBackEligible(item)
+    ? (kept ? "Unmark as not returning" : "Not returning (remove from Mail Back)")
+    : (kept ? "Unmark as kept" : "Keep (remove from Decide)");
+  const keepBtn = showKeep
+    ? `<button class="keep-btn${kept ? " kept" : ""}" title="${keepTitle}">${kept ? "✓ Kept" : "Keep"}</button>`
+    : "";
+
+  article.innerHTML = `
+    <div class="card-top">
+      ${thumbnailHtml(item)}
+      <div class="card-top-right">
+        <div class="card-title">${titleHtml}</div>
+        <div class="card-badges">
+          ${statusBadgeHtml(effectiveStatus(item))}
+          ${returnWindowHtml(item)}
+        </div>
+        <div class="card-meta">
+          <span>Ordered ${formatDate(item.order_date)}</span>
+          ${item.quantity > 1 ? `<span>Qty: ${item.quantity}</span>` : ""}
+          ${priceHtml}
+          ${expectedDeliveryHtml}
+        </div>
+      </div>
+    </div>
+    ${keepBtn}
+  `;
+
+  if (showKeep) {
+    article.querySelector(".keep-btn").addEventListener("click", () => {
+      toggleKept(item);
+      refreshView();
+    });
+  }
+
+  return article;
+}
+
+// ---------------------------------------------------------------------------
+// List rendering
+// ---------------------------------------------------------------------------
+function renderSectionHeading(label, count) {
+  const h = document.createElement("h2");
+  h.className = "section-heading";
+  h.textContent = `${label} (${count})`;
+  return h;
+}
+
+function renderList(items) {
+  const container = document.getElementById("item-list");
+  container.innerHTML = "";
+
+  if (items.length === 0) {
+    const div = document.createElement("div");
+    div.className = "empty-state";
+    div.innerHTML = `<h2>No items found</h2><p>Try a different filter or search term.</p>`;
+    container.appendChild(div);
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+  for (const item of items) {
+    fragment.appendChild(renderCard(item));
+  }
+  container.appendChild(fragment);
+}
+
+function renderCombined(allFiltered) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const mailBack = sortItems(
+    allFiltered.filter(i => { const s = effectiveStatus(i); return (s === "Return Started" || s === "Replacement Ordered") && !isKept(i); }),
+    "return_window_asc"
+  );
+  const decide = sortItems(
+    allFiltered.filter(i => {
+      if (effectiveStatus(i) !== "Delivered") return false;
+      if (isKept(i)) return false;
+      if (!i.return_window_end) return false;
+      return new Date(i.return_window_end + "T00:00:00") >= today;
+    }),
+    "return_window_asc"
+  );
+  const shipped = sortItems(
+    allFiltered.filter(i => effectiveStatus(i) === "Shipped"),
+    "expected_delivery_asc"
+  );
+  const rest = sortItems(
+    allFiltered.filter(i => {
+      const s = effectiveStatus(i);
+      if ((s === "Return Started" || s === "Replacement Ordered") && !isKept(i)) return false;
+      if (s === "Shipped") return false;
+      if (s === "Delivered" && !isKept(i) && i.return_window_end && new Date(i.return_window_end + "T00:00:00") >= today) return false;
+      return true;
+    }),
+    "order_date_desc"
+  );
+
+  const container = document.getElementById("item-list");
+  container.innerHTML = "";
+  const fragment = document.createDocumentFragment();
+
+  const sections = [
+    { label: "Mail Back", items: mailBack },
+    { label: "Decide",    items: decide   },
+    { label: "Shipped",   items: shipped  },
+    { label: "Everything Else", items: rest },
+  ];
+
+  for (const { label, items } of sections) {
+    if (items.length === 0) continue;
+    fragment.appendChild(renderSectionHeading(label, items.length));
+    for (const item of items) fragment.appendChild(renderCard(item));
+  }
+
+  container.appendChild(fragment);
+}
+
+function sortForFilter(filter) {
+  return (filter === "mail_back" || filter === "decide") ? "return_window_asc" : "order_date_desc";
+}
+
+function refreshView() {
+  if (currentFilter === "combined") {
+    const filtered = allItems.filter(item => {
+      if (!currentSearch) return true;
+      const q = currentSearch.toLowerCase();
+      return (
+        (item.title || "").toLowerCase().includes(q) ||
+        (item.asin || "").toLowerCase().includes(q) ||
+        (item.order_id || "").toLowerCase().includes(q)
+      );
+    });
+    renderCombined(filtered);
+  } else {
+    const visible = sortItems(filterItems(allItems, currentFilter, currentSearch), sortForFilter(currentFilter));
+    renderList(visible);
+  }
+  renderTabCounts(allItems);
+}
+
+// ---------------------------------------------------------------------------
+// Event listeners
+// ---------------------------------------------------------------------------
+document.getElementById("search-input").addEventListener("input", e => {
+  currentSearch = e.target.value.trim();
+  refreshView();
+});
+
+document.querySelectorAll(".tab").forEach(btn => {
+  btn.addEventListener("click", () => {
+    currentFilter = btn.dataset.filter;
+    document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+    btn.classList.add("active");
+    window.scrollTo({ top: 0, behavior: "instant" });
+    refreshView();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Boot
+// ---------------------------------------------------------------------------
+function init() {
+  const container = document.getElementById("item-list");
+
+  if (!window.ORDER_DATA) {
+    container.innerHTML = `
+      <div class="error-state">
+        <h2>Could not load order data</h2>
+        <p>
+          Run <code>.venv/bin/python3 fetch_orders.py</code> to generate
+          <code>data/app_data.js</code>, then open <code>index.html</code>
+          directly in your browser.
+        </p>
+      </div>`;
+    return;
+  }
+
+  const data = window.ORDER_DATA;
+  allItems = data.items || [];
+
+  const metaBar = document.getElementById("meta-bar");
+  const generated = data.generated_at
+    ? new Date(data.generated_at).toLocaleString("en-US", {
+        month: "short", day: "numeric", year: "numeric",
+        hour: "numeric", minute: "2-digit"
+      })
+    : null;
+  const emailPart = data.email ? `${data.email} · ` : "";
+  metaBar.textContent =
+    emailPart +
+    `${allItems.length} item${allItems.length !== 1 ? "s" : ""}` +
+    (generated ? ` · Updated ${generated}` : "");
+
+  // Activate the default tab visually
+  document.querySelectorAll(".tab").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.filter === currentFilter);
+  });
+
+  refreshView();
+}
+
+init();

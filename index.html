@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Amazon Order History</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <header>
+    <h1>Order History</h1>
+    <input type="search" id="search-input" placeholder="Search by title, ASIN, or order ID…" autocomplete="off">
+    <div id="meta-bar"></div>
+  </header>
+
+  <nav id="filter-tabs">
+    <button class="tab tab-action" data-filter="combined">Combined</button>
+    <button class="tab tab-action" data-filter="mail_back">Mail Back <span class="count"></span></button>
+    <button class="tab tab-action" data-filter="decide">Decide <span class="count"></span></button>
+    <button class="tab" data-filter="all">All <span class="count"></span></button>
+    <button class="tab" data-filter="Delivered">Delivered <span class="count"></span></button>
+    <button class="tab" data-filter="Shipped">Shipped <span class="count"></span></button>
+    <button class="tab" data-filter="Ordered">Ordered <span class="count"></span></button>
+    <button class="tab" data-filter="Cancelled">Cancelled <span class="count"></span></button>
+    <button class="tab" data-filter="Return Started">Return Started <span class="count"></span></button>
+    <button class="tab" data-filter="Return in Transit">Return in Transit <span class="count"></span></button>
+    <button class="tab" data-filter="Return Complete">Return Complete <span class="count"></span></button>
+    <button class="tab" data-filter="Replacement Ordered">Replacement Ordered <span class="count"></span></button>
+  </nav>
+
+  <main id="item-list"></main>
+
+  <script src="data/app_data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

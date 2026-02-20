@@ -1,0 +1,19 @@
+# Credentials - never commit
+.env
+
+# Generated data files (contain personal order history)
+data/
+output/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Claude project settings
+.claude/
+
+# macOS
+.DS_Store
