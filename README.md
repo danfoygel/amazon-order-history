@@ -1,6 +1,6 @@
 # Amazon Order History
 
-A local web app for viewing your Amazon order history at the item level — filter by status, track returns, and spot approaching return deadlines.
+A local web app for viewing your Amazon order history at the item level — track return deadlines, decide what to keep, and manage mail-backs.
 
 ## Setup
 
@@ -25,13 +25,13 @@ Edit `.env` and fill in your Amazon email and password. If your account uses TOT
 .venv/bin/python3 fetch_orders.py
 ```
 
-This fetches the current year's orders and writes `data/orders.json`. It may take a minute or two.
+This fetches the current year's orders and writes `data/app_data.js`. It may take a minute or two.
 
-**Note on CAPTCHAs:** Amazon occasionally presents a CAPTCHA during login. If the script fails with an authentication error, it's likely a CAPTCHA. There's no automated workaround — run the script in a terminal and retry; it sometimes succeeds on a second attempt. If not, try again a few hours later.
+**Note on CAPTCHAs:** Amazon occasionally presents a CAPTCHA during login. If the script fails with an authentication error, retry a few times or try again later.
 
 ### 4. Open the app
 
-You can't open `index.html` directly as a `file://` URL (browsers block `fetch()` from local files). Instead, serve the directory with Python's built-in server:
+Serve the directory with Python's built-in server:
 
 ```
 python3 -m http.server 8080
@@ -43,19 +43,20 @@ Then open [http://localhost:8080](http://localhost:8080) in your browser.
 
 ## Features
 
-- **Status filter tabs** — All, Delivered, In Transit, Pending, Cancelled
-- **Return tracking tabs** — "Needs Return" (delivered, window open, no return started) and "Return Closing ⚠" (same, but window expires within 7 days)
-- **Return window badge** on each card — shows days remaining or "Window closed"
-- **Mark Return** button — lets you manually record return status (None / Initiated / Shipped / Refund Received) with a date and notes; this is saved in your browser's localStorage and survives data refreshes
+- **Combined view** (default) — items grouped into four sections: Mail Back → Decide → Shipped → Everything Else, each sorted by urgency
+- **Mail Back tab** — items you need to return (Return Started or Replacement Ordered), sorted by mail-back deadline
+- **Decide tab** — delivered items still within their return window, sorted by deadline
+- **Status tabs** — filter by All, Delivered, Shipped, Ordered, Cancelled, and various return statuses
+- **Return/mail-back deadline badges** — color-coded: gray (plenty of time), yellow ⚠ (≤7 days), red (overdue)
+- **Keep button** — on Mail Back and Decide items; marks an item as "keeping it" so it moves out of the action views and into Everything Else. Persisted in `localStorage`.
 - **Search** — filters by item title, ASIN, or order ID in real time
-- **Sort** — by date, price, or return window urgency
-- **Tracking links** — click to open UPS/USPS/FedEx/Amazon tracking directly
+- **Tab counts** — each tab shows the number of matching items
 
 ---
 
 ## Refreshing data
 
-Re-run `fetch_orders.py` whenever you want to update order statuses. Your manually-set return statuses are stored in `localStorage` and will not be overwritten.
+Re-run `fetch_orders.py` whenever you want to update order statuses. Keep decisions (localStorage) are stored in the browser and will not be overwritten by a data refresh.
 
 To automate this, add a cron job:
 
@@ -63,21 +64,6 @@ To automate this, add a cron job:
 # Runs daily at 6 AM — update the path to match your setup
 0 6 * * * cd /Users/you/OrderHistory && .venv/bin/python3 fetch_orders.py
 ```
-
----
-
-## Return status tracking
-
-The `amazon-orders` library includes Amazon's stated `return_eligible_date` per item when available. The app uses this directly; it may extend beyond 30 days for holiday purchases or Prime items. When not available it falls back to order date + 30 days.
-
-Use the **Mark Return** button to track the status of items you've initiated a return for. The four states are:
-
-| State | Meaning |
-|---|---|
-| None | No return action taken |
-| Return Initiated | You've started the return process on Amazon |
-| Return Shipped | Item is on its way back |
-| Refund Received | Amazon has issued the refund |
 
 ---
 
