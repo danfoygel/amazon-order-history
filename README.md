@@ -31,13 +31,17 @@ This fetches the current year's orders and writes `data/app_data.js`. It may tak
 
 ### 4. Open the app
 
-Serve the directory with Python's built-in server:
+The simplest option is to open `index.html` directly in your browser as a `file://` URL — just double-click it in Finder. Data is loaded via a `<script>` tag rather than `fetch()`, so this works without a server.
+
+Alternatively, serve the directory with Python's built-in server (useful if you prefer `http://` or run into any browser restrictions):
 
 ```
 python3 -m http.server 8080
 ```
 
-Then open [http://localhost:8080](http://localhost:8080) in your browser.
+Then open [http://localhost:8080](http://localhost:8080).
+
+**Note on localStorage:** Keep decisions are stored in `localStorage`, which is scoped to the origin. If you switch between `file://` and `http://localhost`, they won't share the same kept-item state.
 
 ---
 
