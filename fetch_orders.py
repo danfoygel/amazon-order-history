@@ -31,6 +31,7 @@ from dotenv import load_dotenv
 try:
     from amazonorders.session import AmazonSession
     from amazonorders.orders import AmazonOrders
+    from amazonorders.conf import AmazonOrdersConfig
 except ImportError:
     raise SystemExit(
         "amazon-orders is not installed. Run: .venv/bin/pip install amazon-orders python-dotenv"
@@ -570,7 +571,10 @@ def main():
         print(f"  [API] Login completed in {time.monotonic() - t_login:.1f}s")
     print("Login successful.")
 
-    amazon_orders = AmazonOrders(session)
+    # Use warn_on_missing_required_field=True so old orders with unusual HTML
+    # (e.g. missing grand_total) produce a warning instead of raising an exception.
+    config = AmazonOrdersConfig(data={"warn_on_missing_required_field": True})
+    amazon_orders = AmazonOrders(session, config=config)
     today = datetime.date.today()
     t_total = time.monotonic()
 
