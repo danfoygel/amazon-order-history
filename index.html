@@ -31,6 +31,19 @@
 
   <main id="item-list"></main>
 
+  <!-- Graph modal -->
+  <dialog id="graph-modal">
+    <div id="graph-modal-card">
+      <div id="graph-modal-header">
+        <span id="graph-modal-title">Items by Status &amp; Year</span>
+        <button id="graph-modal-close" aria-label="Close">&times;</button>
+      </div>
+      <div id="graph-modal-body">
+        <canvas id="graph-canvas"></canvas>
+      </div>
+    </div>
+  </dialog>
+
   <!-- Step 1: manifest sets window.ORDER_DATA_MANIFEST = [2026, 2025, ...] -->
   <script src="data/app_data_manifest.js"></script>
   <!-- Step 2: synchronously inject a <script> tag for each year file during page parse -->
@@ -42,7 +55,9 @@
       }
     })();
   </script>
-  <!-- Step 3: app logic runs after all year globals are populated -->
+  <!-- Step 3: Chart.js (for graph modal) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <!-- Step 4: app logic runs after all year globals are populated -->
   <script src="app.js"></script>
 </body>
 </html>

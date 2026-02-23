@@ -616,10 +616,17 @@ function init() {
       })
     : null;
   const emailPart = email ? `${email} · ` : "";
-  metaBar.textContent =
+  const metaText = document.createElement("span");
+  metaText.textContent =
     emailPart +
     `${allItems.length} item${allItems.length !== 1 ? "s" : ""}` +
     (generated ? ` · Updated ${generated}` : "");
+  const graphBtn = document.createElement("button");
+  graphBtn.id = "graph-btn";
+  graphBtn.textContent = "Show Graph";
+  graphBtn.addEventListener("click", openGraphModal);
+  metaBar.appendChild(metaText);
+  metaBar.appendChild(graphBtn);
 
   // Activate the default tab visually
   document.querySelectorAll(".tab").forEach(btn => {
@@ -682,5 +689,112 @@ function logDiagnostics(items) {
   }
   console.groupEnd();
 }
+
+// ---------------------------------------------------------------------------
+// Graph modal — stacked area chart of items per status per year
+// ---------------------------------------------------------------------------
+
+const GRAPH_STATUSES = [
+  "Ordered",
+  "Shipped",
+  "Delivered",
+  "Replacement Ordered",
+  "Return Started",
+  "Return in Transit",
+  "Return Complete",
+  "Cancelled",
+];
+
+// Colors aligned with existing badge palette in style.css
+const GRAPH_STATUS_COLORS = {
+  "Ordered":             "rgba(107,114,128,0.7)",   // pending gray
+  "Shipped":             "rgba(37,99,235,0.7)",      // in-transit blue
+  "Delivered":           "rgba(22,163,74,0.7)",      // delivered green
+  "Replacement Ordered": "rgba(109,40,217,0.7)",     // replacement purple
+  "Return Started":      "rgba(146,64,14,0.7)",      // return-started amber
+  "Return in Transit":   "rgba(8,145,178,0.7)",      // return-transit cyan
+  "Return Complete":     "rgba(107,114,128,0.4)",    // muted gray
+  "Cancelled":           "rgba(220,38,38,0.7)",      // cancelled red
+};
+
+let graphChartInstance = null;
+
+function buildGraphData() {
+  // Aggregate allItems by order year and effectiveStatus
+  const byYear = {};
+  for (const item of allItems) {
+    const year = item.order_date ? item.order_date.slice(0, 4) : null;
+    if (!year) continue;
+    const status = effectiveStatus(item);
+    if (!byYear[year]) byYear[year] = {};
+    byYear[year][status] = (byYear[year][status] || 0) + 1;
+  }
+
+  const years = Object.keys(byYear).sort();
+  const datasets = GRAPH_STATUSES.map(status => ({
+    label: status,
+    data: years.map(y => byYear[y][status] || 0),
+    backgroundColor: GRAPH_STATUS_COLORS[status],
+    borderColor: GRAPH_STATUS_COLORS[status].replace("0.7", "1").replace("0.4", "0.8"),
+    borderWidth: 1,
+    fill: true,
+    tension: 0.3,
+  }));
+
+  return { years, datasets };
+}
+
+function openGraphModal() {
+  const modal = document.getElementById("graph-modal");
+  const canvas = document.getElementById("graph-canvas");
+
+  if (graphChartInstance) {
+    graphChartInstance.destroy();
+    graphChartInstance = null;
+  }
+
+  const { years, datasets } = buildGraphData();
+
+  graphChartInstance = new Chart(canvas, {
+    type: "line",
+    data: { labels: years, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: "index", intersect: false },
+      scales: {
+        x: { title: { display: true, text: "Year" } },
+        y: {
+          stacked: true,
+          title: { display: true, text: "Items" },
+          beginAtZero: true,
+        },
+      },
+      plugins: {
+        legend: { position: "bottom", labels: { boxWidth: 12, font: { size: 11 } } },
+        tooltip: { mode: "index", intersect: false },
+      },
+    },
+  });
+
+  modal.showModal();
+}
+
+function closeGraphModal() {
+  const modal = document.getElementById("graph-modal");
+  modal.close();
+  if (graphChartInstance) {
+    graphChartInstance.destroy();
+    graphChartInstance = null;
+  }
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  document.getElementById("graph-modal-close").addEventListener("click", closeGraphModal);
+  // Close on backdrop click
+  document.getElementById("graph-modal").addEventListener("click", e => {
+    if (e.target === e.currentTarget) closeGraphModal();
+  });
+});
 
 init();
