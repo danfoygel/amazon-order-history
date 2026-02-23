@@ -481,6 +481,11 @@ def _fetch_year_with_retry(
                     "Check your internet connection and try again.\n"
                     f"Original error: {exc}"
                 ) from exc
+        except Exception:
+            # Stop the timer and restore stderr before letting the traceback print,
+            # so the exception is not interleaved with \r progress lines.
+            progress.finish()
+            raise
     return []   # unreachable, keeps type-checkers happy
 
 
@@ -522,6 +527,9 @@ def _fetch_incremental_with_retry(
                     "Check your internet connection and try again.\n"
                     f"Original error: {exc}"
                 ) from exc
+        except Exception:
+            progress.finish()
+            raise
     return []   # unreachable
 
 
@@ -645,4 +653,8 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    finally:
+        # Restore real stderr so any unhandled exception traceback prints cleanly.
+        sys.stderr = _stderr_interceptor._orig
