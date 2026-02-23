@@ -99,8 +99,6 @@ To automate this, add a cron job:
 0 6 * * * cd /Users/you/OrderHistory && .venv/bin/python3 fetch_orders.py
 ```
 
-**Note on data files:** The old `data/app_data.js` (single-file format) is no longer used and can be deleted once you've fetched at least one year using the new format.
-
 ---
 
 ## Security note
