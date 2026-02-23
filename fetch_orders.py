@@ -57,109 +57,6 @@ def detect_carrier(tracking_url: str | None) -> str:
 
 
 # ---------------------------------------------------------------------------
-# item_status derivation + expected delivery date parsing
-# ---------------------------------------------------------------------------
-
-# Ordered by specificity — first match wins
-STATUS_RULES = [
-    # Cancelled
-    ("cancelled",              "Cancelled"),
-    ("canceled",               "Cancelled"),
-    # Return states (delivered items that were returned)
-    ("return complete",        "Return Complete"),
-    ("return received",        "Return Complete"),
-    ("replacement complete",   "Return Complete"),
-    ("return started",         "Return Started"),
-    ("return in transit",      "Return in Transit"),
-    ("refunded",               "Return in Transit"),
-    ("refund issued",          "Return in Transit"),
-    ("replacement ordered",    "Replacement Ordered"),
-    # Delivered
-    ("delivered",              "Delivered"),
-    # Shipped / en route (has a tracking/arriving message)
-    ("out for delivery",       "Shipped"),
-    ("on the way",             "Shipped"),
-    ("shipped",                "Shipped"),
-    ("in transit",             "Shipped"),
-    # "Now arriving" = Amazon's delayed estimate language, item not yet shipped
-    # Must come before the generic "arriving" → Shipped rule
-    ("now arriving",           "Ordered"),
-    ("arriving",               "Shipped"),
-    # Not yet shipped
-    ("preparing for shipment", "Ordered"),
-    ("order placed",           "Ordered"),
-    ("payment pending",        "Ordered"),
-]
-
-# Orders older than this many days with no parseable status are assumed delivered
-_ASSUME_DELIVERED_AFTER_DAYS = 14
-
-
-def derive_status(delivery_status: str | None, order_date: datetime.date | None = None) -> str:
-    if not delivery_status:
-        # Old orders with no status string — assume delivered if old enough
-        if order_date and (datetime.date.today() - order_date).days > _ASSUME_DELIVERED_AFTER_DAYS:
-            return "Delivered"
-        return "Ordered"
-    key = delivery_status.strip().lower()
-    for pattern, value in STATUS_RULES:
-        if pattern in key:
-            return value
-    # Unrecognised status on an old order — assume delivered
-    if order_date and (datetime.date.today() - order_date).days > _ASSUME_DELIVERED_AFTER_DAYS:
-        return "Delivered"
-    return "Ordered"
-
-
-# Parse expected delivery date from strings like:
-#   "Arriving Saturday"  "Arriving tomorrow"  "Now arriving February 28"
-#   "Arriving today"     "Out for delivery"   "Arriving Feb 22"
-_WEEKDAY_NAMES = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
-_MONTH_NAMES   = ["january", "february", "march", "april", "may", "june",
-                  "july", "august", "september", "october", "november", "december"]
-
-
-def parse_expected_delivery(delivery_status: str | None) -> str | None:
-    if not delivery_status:
-        return None
-    s = delivery_status.strip().lower()
-
-    today = datetime.date.today()
-
-    if "today" in s or "out for delivery" in s:
-        return today.isoformat()
-    if "tomorrow" in s:
-        return (today + datetime.timedelta(days=1)).isoformat()
-
-    # Named weekday: "Arriving Saturday"
-    for i, day in enumerate(_WEEKDAY_NAMES):
-        if day in s:
-            # Find next occurrence of that weekday
-            days_ahead = (i - today.weekday()) % 7
-            if days_ahead == 0:
-                days_ahead = 7  # if it's today's weekday name, must mean next week
-            return (today + datetime.timedelta(days=days_ahead)).isoformat()
-
-    # Month + day: "Now arriving February 28" or "Arriving Feb 22"
-    for i, month in enumerate(_MONTH_NAMES, 1):
-        if month[:3] in s:  # match both full and abbreviated month names
-            # Extract the day number that follows
-            m = re.search(rf"{month[:3]}\w*\s+(\d{{1,2}})", s)
-            if m:
-                day_num = int(m.group(1))
-                year = today.year
-                try:
-                    candidate = datetime.date(year, i, day_num)
-                    if candidate < today:
-                        candidate = datetime.date(year + 1, i, day_num)
-                    return candidate.isoformat()
-                except ValueError:
-                    pass
-
-    return None
-
-
-# ---------------------------------------------------------------------------
 # Date helpers
 # ---------------------------------------------------------------------------
 
@@ -230,8 +127,6 @@ def build_item_record(order, shipment, item, item_id: str) -> dict:
     link = getattr(item, "link", None)
     asin = extract_asin(link)
     image_link = getattr(item, "image_link", None)
-    item_status = derive_status(raw_delivery_status, order.order_placed_date)
-    expected_delivery = parse_expected_delivery(raw_delivery_status) if item_status in ("Shipped", "Ordered") else None
 
     return {
         "item_id":              item_id,
@@ -247,8 +142,6 @@ def build_item_record(order, shipment, item, item_id: str) -> dict:
         "carrier":              detect_carrier(tracking_url),
         "tracking_url":         tracking_url,
         "delivery_status":      raw_delivery_status,
-        "item_status":          item_status,
-        "expected_delivery":    expected_delivery,
         "order_grand_total":    getattr(order, "grand_total", None),
         "return_window_end":    return_window_end,
         "return_status":        "none",

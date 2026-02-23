@@ -29,6 +29,107 @@ function toggleKept(item) {
 let keptIds = loadKept();
 
 // ---------------------------------------------------------------------------
+// Status derivation (mirrors logic that was previously in fetch_orders.py)
+// ---------------------------------------------------------------------------
+const STATUS_RULES = [
+  // Cancelled
+  ["cancelled",              "Cancelled"],
+  ["canceled",               "Cancelled"],
+  // Return states
+  ["return complete",        "Return Complete"],
+  ["return received",        "Return Complete"],
+  ["replacement complete",   "Return Complete"],
+  ["return started",         "Return Started"],
+  ["return in transit",      "Return in Transit"],
+  ["refunded",               "Return in Transit"],
+  ["refund issued",          "Return in Transit"],
+  ["replacement ordered",    "Replacement Ordered"],
+  // Delivered
+  ["delivered",              "Delivered"],
+  // Shipped / en route
+  ["out for delivery",       "Shipped"],
+  ["on the way",             "Shipped"],
+  ["shipped",                "Shipped"],
+  ["in transit",             "Shipped"],
+  ["now arriving",           "Shipped"],
+  ["arriving",               "Shipped"],
+  // Not yet shipped
+  ["preparing for shipment", "Ordered"],
+  ["order placed",           "Ordered"],
+  ["payment pending",        "Ordered"],
+];
+
+const ASSUME_DELIVERED_AFTER_DAYS = 14;
+
+function deriveStatus(deliveryStatus, orderDate) {
+  const key = (deliveryStatus || "").trim().toLowerCase();
+  if (!key) {
+    if (orderDate && daysSince(orderDate) > ASSUME_DELIVERED_AFTER_DAYS) return "Delivered";
+    return "Ordered";
+  }
+  for (const [pattern, value] of STATUS_RULES) {
+    if (key.includes(pattern)) return value;
+  }
+  if (orderDate && daysSince(orderDate) > ASSUME_DELIVERED_AFTER_DAYS) return "Delivered";
+  return "Ordered";
+}
+
+function daysSince(isoDate) {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  return Math.floor((today - new Date(isoDate + "T00:00:00")) / 86400000);
+}
+
+const WEEKDAY_NAMES = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+const MONTH_NAMES = ["january", "february", "march", "april", "may", "june",
+                     "july", "august", "september", "october", "november", "december"];
+
+function parseExpectedDelivery(deliveryStatus) {
+  if (!deliveryStatus) return null;
+  const s = deliveryStatus.trim().toLowerCase();
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+
+  if (s.includes("today") || s.includes("out for delivery")) {
+    return toIso(today);
+  }
+  if (s.includes("tomorrow")) {
+    return toIso(new Date(today.getTime() + 86400000));
+  }
+
+  // Named weekday: "Arriving Saturday"
+  for (let i = 0; i < WEEKDAY_NAMES.length; i++) {
+    if (s.includes(WEEKDAY_NAMES[i])) {
+      let daysAhead = (i - today.getDay() + 7) % 7;
+      if (daysAhead === 0) daysAhead = 7;
+      return toIso(new Date(today.getTime() + daysAhead * 86400000));
+    }
+  }
+
+  // Month + day: "Now arriving February 28" or "Arriving Feb 22"
+  for (let i = 0; i < MONTH_NAMES.length; i++) {
+    const abbr = MONTH_NAMES[i].slice(0, 3);
+    if (s.includes(abbr)) {
+      const m = s.match(new RegExp(abbr + "\\w*\\s+(\\d{1,2})"));
+      if (m) {
+        const day = parseInt(m[1], 10);
+        const month = i; // 0-indexed
+        let candidate = new Date(today.getFullYear(), month, day);
+        if (candidate < today) candidate = new Date(today.getFullYear() + 1, month, day);
+        return toIso(candidate);
+      }
+    }
+  }
+
+  return null;
+}
+
+function toIso(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+// ---------------------------------------------------------------------------
 // Filtering & sorting
 // ---------------------------------------------------------------------------
 function filterItems(items, tab, searchQuery) {
@@ -84,10 +185,12 @@ function sortItems(items, sort) {
       });
     case "expected_delivery_asc":
       return arr.sort((a, b) => {
-        if (!a.expected_delivery && !b.expected_delivery) return 0;
-        if (!a.expected_delivery) return 1;
-        if (!b.expected_delivery) return -1;
-        return a.expected_delivery.localeCompare(b.expected_delivery);
+        const da = parseExpectedDelivery(a.delivery_status);
+        const db = parseExpectedDelivery(b.delivery_status);
+        if (!da && !db) return 0;
+        if (!da) return 1;
+        if (!db) return -1;
+        return da.localeCompare(db);
       });
     default:
       return arr;
@@ -186,14 +289,15 @@ function orderUrl(item) {
 // are treated as Delivered for display purposes)
 // ---------------------------------------------------------------------------
 function effectiveStatus(item) {
-  if (item.item_status === "Return Started" && item.return_window_end) {
+  const status = deriveStatus(item.delivery_status, item.order_date);
+  if (status === "Return Started" && item.return_window_end) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const end = new Date(item.return_window_end + "T00:00:00");
     const daysOverdue = Math.ceil((today - end) / (1000 * 60 * 60 * 24));
     if (daysOverdue > 30) return "Delivered";
   }
-  return item.item_status;
+  return status;
 }
 
 // ---------------------------------------------------------------------------
@@ -272,9 +376,13 @@ function renderCard(item) {
     ? `<span class="price">${formatPrice(item.unit_price)}${item.quantity > 1 ? ` × ${item.quantity}` : ""}</span>`
     : "";
 
-  const etaLabel = item.item_status === "Ordered" ? "Expected" : "Arrives";
-  const expectedDeliveryHtml = item.expected_delivery
-    ? `<span class="delivery-eta">${etaLabel} ${formatDate(item.expected_delivery)}</span>`
+  const itemStatus = effectiveStatus(item);
+  const expectedDelivery = (itemStatus === "Shipped" || itemStatus === "Ordered")
+    ? parseExpectedDelivery(item.delivery_status)
+    : null;
+  const etaLabel = itemStatus === "Ordered" ? "Expected" : "Arrives";
+  const expectedDeliveryHtml = expectedDelivery
+    ? `<span class="delivery-eta">${etaLabel} ${formatDate(expectedDelivery)}</span>`
     : "";
 
   const article = document.createElement("article");
