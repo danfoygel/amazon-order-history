@@ -35,7 +35,18 @@ Order data is stored in per-year files (`data/app_data_2025.js`, `data/app_data_
 .venv/bin/python3 fetch_orders.py --year 2023
 ```
 
-Run this once per year you want to add. You can go as far back as your Amazon account's first order.
+Run this once per year you want to add. You can go as far back as your Amazon account's first order. Recommended first-run sequence:
+
+```
+# Backfill each year of history you want (oldest to newest)
+.venv/bin/python3 fetch_orders.py --year 2020
+.venv/bin/python3 fetch_orders.py --year 2021
+.venv/bin/python3 fetch_orders.py --year 2022
+# ... and so on up to last year
+
+# Then do an incremental fetch to cover the last 3 months
+.venv/bin/python3 fetch_orders.py
+```
 
 **Verbose mode** — add `--verbose` to either command to see detailed API diagnostics (timing, order counts, merge decisions):
 
@@ -71,7 +82,7 @@ Then open [http://localhost:8080](http://localhost:8080).
 - **Decide tab** — delivered items still within their return window, sorted by deadline
 - **Status tabs** — filter by All, Delivered, Shipped, Ordered, Cancelled, and various return statuses
 - **Return/mail-back deadline badges** — color-coded: gray (plenty of time), yellow ⚠ (≤7 days), red (overdue)
-- **Keep button** — on Mail Back and Decide items; marks an item as "keeping it" so it moves out of the action views and into Everything Else. Persisted in `localStorage`.
+- **Keep button** — on Mail Back and Decide items; marks an item as "keeping it" so it moves out of those action views. Persisted in `localStorage`.
 - **Search** — filters by item title, ASIN, or order ID in real time
 - **Tab counts** — each tab shows the number of matching items
 
