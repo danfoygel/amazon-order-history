@@ -239,14 +239,16 @@ class FetchProgress:
     """
     Tracks and displays live progress while get_order_history() runs.
 
-    Strategy:
-    - The library pages through order stubs first (fast), then fires all
-      detail requests in parallel (slow — one HTTP request per order).
-    - We intercept the logging.debug("No next page") call to learn the
-      total order count as soon as paging finishes, before details start.
-    - We wrap get_order() to count each detail completion as it comes in.
-    - A background timer redraws the line every second so elapsed time
-      ticks even if no orders complete (e.g. during initial paging).
+    Non-verbose mode: a single line that rewrites itself in place with \r,
+    showing "fetching order list…" during paging then "N/total (pct%)" as
+    detail requests complete.
+
+    Verbose mode: plain sequential lines per order, no \r tricks, so output
+    is clean when redirected or viewed in a log.
+
+    Total order count is learned by wrapping _build_orders_async to capture
+    the task list length just before asyncio.gather fires — this is the
+    moment paging finishes and we know how many detail requests will run.
     """
 
     def __init__(self, amazon_orders, label: str, verbose: bool = False):
@@ -255,11 +257,11 @@ class FetchProgress:
         self._verbose = verbose
         self._lock = threading.Lock()
         self._completed = 0
-        self._total = 0          # set once paging finishes
+        self._total = 0
         self._t0 = time.monotonic()
         self._done = False
 
-        # --- Hook 1: intercept get_order for per-order detail progress ---
+        # --- Hook 1: wrap get_order to count each detail completion ---
         original_get_order = amazon_orders.get_order
 
         def _patched_get_order(order_id, clone=None):
@@ -270,39 +272,45 @@ class FetchProgress:
         amazon_orders.get_order = _patched_get_order
         self._original_get_order = original_get_order
 
-        # --- Hook 2: intercept library logging to detect paging complete ---
-        # The library logs debug("No next page") when all pages are fetched.
-        # At that point, the order stubs are counted; details haven't started.
-        import logging as _logging
+        # --- Hook 2: wrap _build_orders_async to learn the total before gather fires ---
+        # The library collects all order tasks then calls asyncio.gather(*order_tasks).
+        # We wrap the coroutine to intercept order_tasks length at that moment.
+        import asyncio as _asyncio
+        original_build = amazon_orders._build_orders_async
 
-        class _PagingHandler(_logging.Handler):
-            def __init__(self_, progress_ref):
-                super().__init__()
-                self_._progress = progress_ref
+        async def _patched_build(next_page, keep_paging, full_details, current_index):
+            # Run the original; it returns after gather completes.
+            # We can't intercept mid-gather, but we CAN patch gather itself
+            # just for the duration of this call to capture the task count.
+            original_gather = _asyncio.gather
 
-            def emit(self_, record):
-                msg = record.getMessage()
-                # "No next page" fires once per year/filter when paging ends
-                if "no next page" in msg.lower() or "keep_paging is false" in msg.lower():
-                    # We don't know the count yet from the log message alone;
-                    # set_total() will be called with the real count once the
-                    # library returns. The handler just signals paging is done.
-                    pass
+            async def _counting_gather(*tasks, **kwargs):
+                self.set_total(len(tasks))
+                return await original_gather(*tasks, **kwargs)
 
-        self._log_handler = _PagingHandler(self)
-        lib_logger = _logging.getLogger("amazonorders.orders")
-        lib_logger.addHandler(self._log_handler)
-        lib_logger.setLevel(_logging.DEBUG)
+            _asyncio.gather = _counting_gather
+            try:
+                return await original_build(next_page, keep_paging, full_details, current_index)
+            finally:
+                _asyncio.gather = original_gather
 
-        # --- Background timer: redraws line every second ---
-        self._timer = threading.Thread(target=self._tick, daemon=True)
-        self._timer.start()
+        amazon_orders._build_orders_async = _patched_build
+        self._original_build = original_build
+
+        # --- Background timer: redraws the progress line every second ---
+        # Only used in non-verbose mode.
+        if not verbose:
+            self._timer = threading.Thread(target=self._tick, daemon=True)
+            self._timer.start()
+        else:
+            self._timer = None
 
     def _elapsed(self) -> str:
         secs = int(time.monotonic() - self._t0)
         return f"{secs // 60}:{secs % 60:02d}"
 
     def _redraw(self):
+        """Rewrite the current terminal line in place (non-verbose only)."""
         with self._lock:
             completed = self._completed
             total = self._total
@@ -325,35 +333,37 @@ class FetchProgress:
             self._completed += 1
             completed = self._completed
             total = self._total
-        self._redraw()
         if self._verbose:
-            sys.stdout.write(
-                f"\n  [API] order {order_id} details fetched"
-                f"  ({completed}/{total or '?'}) [{self._elapsed()}]\n"
-            )
-            sys.stdout.flush()
+            print(f"  [API] order {order_id} details fetched  ({completed}/{total or '?'}) [{self._elapsed()}]")
+        else:
+            self._redraw()
 
     def set_total(self, total: int):
         with self._lock:
             self._total = total
-        self._redraw()
+        if not self._verbose:
+            self._redraw()
+        else:
+            print(f"  [API] paging complete: {total} orders to fetch details for  [{self._elapsed()}]")
 
     def finish(self):
         self._done = True
-        self._timer.join(timeout=2)
-        # Remove our log handler
-        import logging as _logging
-        _logging.getLogger("amazonorders.orders").removeHandler(self._log_handler)
+        if self._timer:
+            self._timer.join(timeout=2)
         elapsed = self._elapsed()
         with self._lock:
             completed = self._completed
             total = self._total
-        sys.stdout.write(
-            f"\r  {self._label}: {completed}/{total or completed} orders  [{elapsed}]\n"
-        )
-        sys.stdout.flush()
-        # Restore original method
+        if self._verbose:
+            print(f"  [API] done: {completed}/{total or completed} orders  [{elapsed}]")
+        else:
+            sys.stdout.write(
+                f"\r  {self._label}: {completed}/{total or completed} orders  [{elapsed}]\n"
+            )
+            sys.stdout.flush()
+        # Restore patched methods
         self._ao.get_order = self._original_get_order
+        self._ao._build_orders_async = self._original_build
 
 
 # ---------------------------------------------------------------------------
@@ -380,7 +390,6 @@ def _fetch_year_with_retry(
         progress = FetchProgress(amazon_orders, f"year {year}", verbose=verbose)
         try:
             orders = amazon_orders.get_order_history(year=year, full_details=True)
-            progress.set_total(len(orders))  # ensure total is set even if hook missed it
             progress.finish()
             if verbose:
                 print(f"  [API] → {len(orders)} orders returned")
@@ -422,7 +431,6 @@ def _fetch_incremental_with_retry(
             orders = amazon_orders.get_order_history(
                 time_filter="months-3", full_details=True
             )
-            progress.set_total(len(orders))
             progress.finish()
             if verbose:
                 print(f"  [API] → {len(orders)} orders returned")
