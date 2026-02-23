@@ -16,6 +16,7 @@ Data files written:
 
 import argparse
 import glob as _glob
+import io
 import os
 import json
 import sys
@@ -235,13 +236,45 @@ def write_manifest() -> None:
 # Progress display
 # ---------------------------------------------------------------------------
 
+class _StderrInterceptor(io.TextIOBase):
+    """
+    Wraps stderr so that warning lines from the library (which print mid-fetch)
+    are shown cleanly in non-verbose mode: move to a new line first, print the
+    warning, then redraw the progress line so the \r display stays intact.
+    In verbose mode (or when no progress is active), pass through unchanged.
+    """
+
+    def __init__(self, original_stderr):
+        self._orig = original_stderr
+        self.progress: "FetchProgress | None" = None
+
+    def write(self, s: str) -> int:
+        if self.progress and not self.progress._verbose and s.strip():
+            # Move past the progress line, print the warning, then redraw
+            self._orig.write("\n")
+            self._orig.write(s)
+            self.progress._redraw()
+        else:
+            self._orig.write(s)
+        return len(s)
+
+    def flush(self):
+        self._orig.flush()
+
+
+# Module-level stderr interceptor — installed once, reused across fetches.
+_stderr_interceptor = _StderrInterceptor(sys.stderr)
+sys.stderr = _stderr_interceptor
+
+
 class FetchProgress:
     """
     Tracks and displays live progress while get_order_history() runs.
 
     Non-verbose mode: a single line that rewrites itself in place with \r,
     showing "fetching order list…" during paging then "N/total (pct%)" as
-    detail requests complete.
+    detail requests complete. Library warnings (stderr) are printed cleanly
+    above the progress line without corrupting it.
 
     Verbose mode: plain sequential lines per order, no \r tricks, so output
     is clean when redirected or viewed in a log.
@@ -261,16 +294,44 @@ class FetchProgress:
         self._t0 = time.monotonic()
         self._done = False
 
-        # --- Hook 1: wrap get_order to count each detail completion ---
-        original_get_order = amazon_orders.get_order
+        # Register with the stderr interceptor so warnings print cleanly
+        if not verbose:
+            _stderr_interceptor.progress = self
 
-        def _patched_get_order(order_id, clone=None):
-            result = original_get_order(order_id, clone=clone)
-            self._on_order_done(order_id)
+        # --- Hook 1: wrap _build_order to count every order completion ---
+        # We hook _build_order rather than get_order so that "unsupported"
+        # orders (Fresh, Whole Foods, physical stores) — which skip get_order
+        # and just return a partial order — still increment the counter.
+        # We also suppress the per-order warning and accumulate a summary instead.
+        self._skipped_orders: list[str] = []
+        original_build_order = amazon_orders._build_order
+
+        def _patched_build_order(order_tag, full_details, current_index):
+            import logging as _logging
+            # Temporarily silence the library's warning for unsupported orders;
+            # we'll print a clean summary at finish() instead.
+            lib_logger = _logging.getLogger("amazonorders.orders")
+            original_level = lib_logger.level
+            class _WarningCapture(_logging.Handler):
+                def emit(self_, record):
+                    if "unsupported Order type" in record.getMessage():
+                        # Extract order number from the message
+                        parts = record.getMessage().split()
+                        if len(parts) >= 2:
+                            self._skipped_orders.append(parts[1])
+            capture = _WarningCapture()
+            lib_logger.addHandler(capture)
+            lib_logger.setLevel(_logging.WARNING)
+            try:
+                result = original_build_order(order_tag, full_details, current_index)
+            finally:
+                lib_logger.removeHandler(capture)
+                lib_logger.setLevel(original_level)
+            self._on_order_done(getattr(result, "order_number", ""))
             return result
 
-        amazon_orders.get_order = _patched_get_order
-        self._original_get_order = original_get_order
+        amazon_orders._build_order = _patched_build_order
+        self._original_build_order = original_build_order
 
         # --- Hook 2: wrap _build_orders_async to learn the total before gather fires ---
         # The library collects all order tasks then calls asyncio.gather(*order_tasks).
@@ -279,9 +340,6 @@ class FetchProgress:
         original_build = amazon_orders._build_orders_async
 
         async def _patched_build(next_page, keep_paging, full_details, current_index):
-            # Run the original; it returns after gather completes.
-            # We can't intercept mid-gather, but we CAN patch gather itself
-            # just for the duration of this call to capture the task count.
             original_gather = _asyncio.gather
 
             async def _counting_gather(*tasks, **kwargs):
@@ -315,9 +373,12 @@ class FetchProgress:
             completed = self._completed
             total = self._total
         elapsed = self._elapsed()
-        if total:
+        if total and completed > 0:
             pct = completed / total * 100
             line = f"  {self._label}: {completed}/{total} orders ({pct:.0f}%)  [{elapsed}]"
+        elif total:
+            # Total known but no completions yet — skip percentage
+            line = f"  {self._label}: 0/{total} orders  [{elapsed}]"
         else:
             line = f"  {self._label}: fetching order list …  [{elapsed}]"
         sys.stdout.write(f"\r{line:<72}")
@@ -347,22 +408,31 @@ class FetchProgress:
             print(f"  [API] paging complete: {total} orders to fetch details for  [{self._elapsed()}]")
 
     def finish(self):
+        # Stop timer first, then write final line — prevents the timer from
+        # firing a \r between our \r final line and the \n that follows it.
         self._done = True
         if self._timer:
             self._timer.join(timeout=2)
+        _stderr_interceptor.progress = None
         elapsed = self._elapsed()
         with self._lock:
             completed = self._completed
             total = self._total
+        skipped = len(self._skipped_orders)
         if self._verbose:
             print(f"  [API] done: {completed}/{total or completed} orders  [{elapsed}]")
+            if skipped:
+                print(f"  [API] {skipped} unsupported order(s) skipped (Fresh/Whole Foods/physical store): "
+                      f"{', '.join(self._skipped_orders)}")
         else:
             sys.stdout.write(
                 f"\r  {self._label}: {completed}/{total or completed} orders  [{elapsed}]\n"
             )
             sys.stdout.flush()
+            if skipped:
+                print(f"  ({skipped} unsupported order(s) skipped: Fresh/Whole Foods/physical store)")
         # Restore patched methods
-        self._ao.get_order = self._original_get_order
+        self._ao._build_order = self._original_build_order
         self._ao._build_orders_async = self._original_build
 
 
