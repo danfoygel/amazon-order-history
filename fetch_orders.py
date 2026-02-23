@@ -4,7 +4,7 @@ fetch_orders.py — Scrapes Amazon order history and writes data/app_data.js.
 
 Usage:
     python fetch_orders.py           # full fetch: last 12 months
-    python fetch_orders.py --incremental  # fast: last 30 days merged with existing data
+    python fetch_orders.py --incremental  # fast: last 60 days merged with existing data
 
 Reads credentials from .env (copy .env.example to .env and fill in values).
 """
@@ -12,6 +12,7 @@ Reads credentials from .env (copy .env.example to .env and fill in values).
 import os
 import sys
 import json
+import time
 import datetime
 import re
 from urllib.parse import urlparse
@@ -25,6 +26,11 @@ except ImportError:
     raise SystemExit(
         "amazon-orders is not installed. Run: .venv/bin/pip install amazon-orders python-dotenv"
     )
+
+try:
+    from requests.exceptions import ConnectionError as RequestsConnectionError
+except ImportError:
+    RequestsConnectionError = OSError
 
 load_dotenv()
 
@@ -154,6 +160,35 @@ def build_item_record(order, shipment, item, item_id: str) -> dict:
 # Shared: fetch orders for a date cutoff and build item records
 # ---------------------------------------------------------------------------
 
+def _fetch_year_with_retry(amazon_orders, year: int, max_retries: int = 3) -> list:
+    """
+    Fetch a single year of orders with retry on network errors.
+
+    The amazonorders library fires one HTTP request per order in parallel
+    (full_details=True). On macOS this burst can overwhelm the DNS resolver,
+    causing spurious NameResolutionError / ConnectionError failures. Retrying
+    after a short back-off is enough to recover in the vast majority of cases.
+    """
+    for attempt in range(1, max_retries + 1):
+        try:
+            return amazon_orders.get_order_history(year=year, full_details=True)
+        except RequestsConnectionError as exc:
+            if attempt < max_retries:
+                wait = 2 ** (attempt - 1)   # 1 s, 2 s, 4 s …
+                print(
+                    f"  Network error on attempt {attempt}/{max_retries} "
+                    f"(DNS failure or dropped connection) — retrying in {wait}s …"
+                )
+                time.sleep(wait)
+            else:
+                raise SystemExit(
+                    f"\nNetwork error after {max_retries} attempts while fetching {year} orders.\n"
+                    "Check your internet connection and try again.\n"
+                    f"Original error: {exc}"
+                ) from exc
+    return []   # unreachable, keeps type-checkers happy
+
+
 def fetch_and_build(amazon_orders, cutoff: datetime.date) -> list[dict]:
     """Fetch all orders since cutoff and return a list of item records."""
     today = datetime.date.today()
@@ -162,7 +197,7 @@ def fetch_and_build(amazon_orders, cutoff: datetime.date) -> list[dict]:
     all_orders = []
     for year in years_to_fetch:
         print(f"Fetching orders for {year}...")
-        year_orders = amazon_orders.get_order_history(year=year, full_details=True)
+        year_orders = _fetch_year_with_retry(amazon_orders, year)
         print(f"  Found {len(year_orders)} orders.")
         all_orders.extend(year_orders)
 
@@ -242,8 +277,11 @@ def main():
     amazon_orders = AmazonOrders(session)
 
     if incremental:
-        print("Mode: incremental (last 30 days)")
-        cutoff = today - datetime.timedelta(days=30)
+        # Fetch 60 days instead of 30: orders placed just outside a 30-day window
+        # can still be in transit (e.g., ordered 35 days ago, shipped last week).
+        # Without a wider window those orders stay cached with their stale status.
+        print("Mode: incremental (last 60 days)")
+        cutoff = today - datetime.timedelta(days=60)
         new_items = fetch_and_build(amazon_orders, cutoff)
 
         # Merge: keep existing items older than cutoff, replace everything newer

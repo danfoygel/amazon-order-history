@@ -46,9 +46,10 @@ const STATUS_RULES = [
   ["replacement ordered",    "Replacement Ordered"],
   // Delivered
   ["delivered",              "Delivered"],
-  // Shipped / en route
+  // Shipped / en route ("not yet shipped" must precede "shipped" to avoid false match)
   ["out for delivery",       "Shipped"],
   ["on the way",             "Shipped"],
+  ["not yet shipped",        "Ordered"],
   ["shipped",                "Shipped"],
   ["in transit",             "Shipped"],
   ["now arriving",           "Shipped"],
@@ -590,7 +591,61 @@ function init() {
     btn.classList.toggle("active", btn.dataset.filter === currentFilter);
   });
 
+  logDiagnostics(allItems);
   refreshView();
+}
+
+// ---------------------------------------------------------------------------
+// Diagnostics — logged to the browser console on every page load.
+// Open DevTools → Console and look for "Order History Diagnostics".
+// ---------------------------------------------------------------------------
+function logDiagnostics(items) {
+  const statusCounts = {};
+  const deliverySamples = {};  // derived status → [delivery_status strings]
+  const unknownSamples  = [];  // delivery_status strings that fell through to default
+
+  for (const item of items) {
+    const s = deriveStatus(item.delivery_status, item.order_date);
+    statusCounts[s] = (statusCounts[s] || 0) + 1;
+
+    if (item.delivery_status) {
+      if (!deliverySamples[s]) deliverySamples[s] = new Set();
+      deliverySamples[s].add(item.delivery_status);
+    }
+
+    // Flag items whose raw delivery_status doesn't match any known keyword
+    // and whose derived status is Delivered/Ordered (possible mis-classification).
+    if (item.delivery_status && (s === "Ordered" || s === "Delivered")) {
+      const raw = item.delivery_status.toLowerCase();
+      const knownKeywords = [
+        "cancelled", "canceled", "return", "refund", "replacement", "delivered",
+        "out for delivery", "on the way", "not yet shipped", "shipped", "in transit",
+        "now arriving", "arriving", "preparing", "order placed", "payment pending",
+      ];
+      if (!knownKeywords.some(k => raw.includes(k))) {
+        unknownSamples.push({ status: s, delivery_status: item.delivery_status });
+      }
+    }
+  }
+
+  // Convert sets to sorted arrays for readability
+  const samples = {};
+  for (const [k, v] of Object.entries(deliverySamples)) {
+    samples[k] = [...v].slice(0, 5);
+  }
+
+  console.group("Order History Diagnostics");
+  console.log(`Total items: ${items.length}`);
+  console.table(statusCounts);
+  console.log("Sample raw delivery_status by derived status:", samples);
+  if (unknownSamples.length) {
+    console.warn(
+      `${unknownSamples.length} item(s) have unrecognised delivery_status strings ` +
+      `(check STATUS_RULES in app.js):`,
+      unknownSamples.slice(0, 20)
+    );
+  }
+  console.groupEnd();
 }
 
 init();
