@@ -240,27 +240,40 @@ def write_manifest() -> None:
 class _StderrInterceptor(io.TextIOBase):
     """
     Wraps stderr so that warning lines from the library (which print mid-fetch)
-    are shown cleanly in non-verbose mode: move to a new line first, print the
-    warning, then redraw the progress line so the \r display stays intact.
-    In verbose mode (or when no progress is active), pass through unchanged.
+    don't corrupt the \r progress display in non-verbose mode.
+
+    Instead of printing warnings immediately, we buffer them and flush them
+    after the final progress line in FetchProgress.finish(). In verbose mode
+    (or when no progress is active), writes pass through to real stderr unchanged.
     """
 
     def __init__(self, original_stderr):
         self._orig = original_stderr
         self.progress: "FetchProgress | None" = None
+        self._buffer: list[str] = []
+        self._buf_lock = threading.Lock()
 
     def write(self, s: str) -> int:
-        if self.progress and not self.progress._verbose and s.strip():
-            # Move past the progress line, print the warning, then redraw
-            self._orig.write("\n")
-            self._orig.write(s)
-            self.progress._redraw()
+        progress = self.progress
+        if progress and not progress._verbose and s.strip():
+            # Buffer the warning; it will be printed after the final progress line.
+            with self._buf_lock:
+                self._buffer.append(s)
         else:
             self._orig.write(s)
         return len(s)
 
     def flush(self):
         self._orig.flush()
+
+    def flush_buffer(self):
+        """Print any buffered warnings to real stderr and clear the buffer."""
+        with self._buf_lock:
+            lines, self._buffer = self._buffer, []
+        for line in lines:
+            self._orig.write(line)
+        if lines:
+            self._orig.flush()
 
 
 # Module-level stderr interceptor — installed once, reused across fetches.
@@ -289,7 +302,9 @@ class FetchProgress:
         self._ao = amazon_orders
         self._label = label
         self._verbose = verbose
-        self._lock = threading.Lock()
+        self._lock = threading.Lock()       # guards _completed / _total
+        self._stdout_lock = threading.Lock()  # serialises all \r writes to stdout
+        self._stop_event = threading.Event()  # signals timer thread to exit
         self._completed = 0
         self._total = 0
         self._t0 = time.monotonic()
@@ -363,32 +378,39 @@ class FetchProgress:
             self._timer.start()
         else:
             self._timer = None
+            self._stop_event.set()  # mark as already stopped for verbose mode
 
     def _elapsed(self) -> str:
         secs = int(time.monotonic() - self._t0)
         return f"{secs // 60}:{secs % 60:02d}"
 
-    def _redraw(self):
-        """Rewrite the current terminal line in place (non-verbose only)."""
+    def _format_line(self) -> str:
+        """Build the progress line string (call with _lock held or after reading snapshot)."""
         with self._lock:
             completed = self._completed
             total = self._total
         elapsed = self._elapsed()
         if total and completed > 0:
             pct = completed / total * 100
-            line = f"  {self._label}: {completed}/{total} orders ({pct:.0f}%)  [{elapsed}]"
+            return f"  {self._label}: {completed}/{total} orders ({pct:.0f}%)  [{elapsed}]"
         elif total:
-            # Total known but no completions yet — skip percentage
-            line = f"  {self._label}: 0/{total} orders  [{elapsed}]"
+            return f"  {self._label}: 0/{total} orders  [{elapsed}]"
         else:
-            line = f"  {self._label}: fetching order list …  [{elapsed}]"
-        sys.stdout.write(f"\r{line:<72}")
+            return f"  {self._label}: fetching order list …  [{elapsed}]"
+
+    def _redraw_locked(self):
+        """Write the progress line — caller must hold _stdout_lock."""
+        sys.stdout.write(f"\r{self._format_line():<72}")
         sys.stdout.flush()
 
+    def _redraw(self):
+        """Rewrite the current terminal line in place (non-verbose only)."""
+        with self._stdout_lock:
+            self._redraw_locked()
+
     def _tick(self):
-        while not self._done:
+        while not self._stop_event.wait(timeout=1):
             self._redraw()
-            time.sleep(1)
 
     def _on_order_done(self, order_id: str):
         with self._lock:
@@ -409,16 +431,18 @@ class FetchProgress:
             print(f"  [API] paging complete: {total} orders to fetch details for  [{self._elapsed()}]")
 
     def finish(self):
-        # Stop timer first, then write final line — prevents the timer from
-        # firing a \r between our \r final line and the \n that follows it.
+        # Signal and join the timer thread first so it can't race with the
+        # final line write.  Then write the final line under the stdout lock
+        # so any concurrent stderr warning handler can't interleave either.
         self._done = True
+        self._stop_event.set()
         if self._timer:
             self._timer.join(timeout=2)
         _stderr_interceptor.progress = None
-        elapsed = self._elapsed()
         with self._lock:
             completed = self._completed
             total = self._total
+        elapsed = self._elapsed()
         skipped = len(self._skipped_orders)
         if self._verbose:
             print(f"  [API] done: {completed}/{total or completed} orders  [{elapsed}]")
@@ -426,12 +450,15 @@ class FetchProgress:
                 print(f"  [API] {skipped} unsupported order(s) skipped (Fresh/Whole Foods/physical store): "
                       f"{', '.join(self._skipped_orders)}")
         else:
-            sys.stdout.write(
-                f"\r  {self._label}: {completed}/{total or completed} orders  [{elapsed}]\n"
-            )
-            sys.stdout.flush()
+            final = f"  {self._label}: {completed}/{total or completed} orders  [{elapsed}]"
+            with self._stdout_lock:
+                # Pad to 72 chars to fully overwrite the last timer-drawn line,
+                # then end with \n to leave the cursor on a clean new line.
+                sys.stdout.write(f"\r{final:<72}\n")
+                sys.stdout.flush()
             if skipped:
                 print(f"  ({skipped} unsupported order(s) skipped: Fresh/Whole Foods/physical store)")
+            _stderr_interceptor.flush_buffer()
         # Restore patched methods
         self._ao._build_order = self._original_build_order
         self._ao._build_orders_async = self._original_build
