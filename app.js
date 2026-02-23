@@ -479,7 +479,7 @@ function renderCombined(allFiltered) {
     allFiltered.filter(i => effectiveStatus(i) === "Shipped"),
     "expected_delivery_asc"
   );
-  const rest = sortItems(
+  const restItems = sortItems(
     allFiltered.filter(i => {
       const s = effectiveStatus(i);
       if ((s === "Return Started" || s === "Replacement Ordered") && !isKept(i)) return false;
@@ -490,18 +490,39 @@ function renderCombined(allFiltered) {
     "order_date_desc"
   );
 
+  // Group "rest" items by order month (YYYY-MM), most recent first
+  const byMonth = new Map();
+  for (const item of restItems) {
+    const key = (item.order_date || "").slice(0, 7); // "YYYY-MM"
+    if (!byMonth.has(key)) byMonth.set(key, []);
+    byMonth.get(key).push(item);
+  }
+  const monthSections = [...byMonth.entries()].map(([key, items]) => {
+    const [year, month] = key.split("-");
+    const label = key
+      ? new Date(Number(year), Number(month) - 1, 1)
+          .toLocaleDateString("en-US", { month: "long", year: "numeric" })
+      : "Unknown";
+    return { label, items };
+  });
+
   const container = document.getElementById("item-list");
   container.innerHTML = "";
   const fragment = document.createDocumentFragment();
 
-  const sections = [
+  const fixedSections = [
     { label: "Mail Back", items: mailBack },
     { label: "Decide",    items: decide   },
     { label: "Shipped",   items: shipped  },
-    { label: "Everything Else", items: rest },
   ];
 
-  for (const { label, items } of sections) {
+  for (const { label, items } of fixedSections) {
+    if (items.length === 0) continue;
+    fragment.appendChild(renderSectionHeading(label, items.length));
+    for (const item of items) fragment.appendChild(renderCard(item));
+  }
+
+  for (const { label, items } of monthSections) {
     if (items.length === 0) continue;
     fragment.appendChild(renderSectionHeading(label, items.length));
     for (const item of items) fragment.appendChild(renderCard(item));
