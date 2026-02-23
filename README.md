@@ -21,11 +21,30 @@ Edit `.env` and fill in your Amazon email and password. If your account uses TOT
 
 ### 3. Fetch your orders
 
+Order data is stored in per-year files (`data/app_data_2025.js`, `data/app_data_2024.js`, etc.) plus a manifest file (`data/app_data_manifest.js`) that tells the app which years are available.
+
+**Incremental refresh** (run this daily, e.g. via cron) — fetches the last 3 months and merges into the appropriate year file(s):
+
 ```
 .venv/bin/python3 fetch_orders.py
 ```
 
-This fetches the current year's orders and writes `data/app_data.js`. It may take a minute or two.
+**Historical backfill** — fetch a full calendar year once and write it to its own file:
+
+```
+.venv/bin/python3 fetch_orders.py --year 2023
+```
+
+Run this once per year you want to add. You can go as far back as your Amazon account's first order.
+
+**Verbose mode** — add `--verbose` to either command to see detailed API diagnostics (timing, order counts, merge decisions):
+
+```
+.venv/bin/python3 fetch_orders.py --verbose
+.venv/bin/python3 fetch_orders.py --year 2023 --verbose
+```
+
+Each command takes a minute or two per year fetched.
 
 **Note on CAPTCHAs:** Amazon occasionally presents a CAPTCHA during login. If the script fails with an authentication error, retry a few times or try again later.
 
@@ -47,7 +66,7 @@ Then open [http://localhost:8080](http://localhost:8080).
 
 ## Features
 
-- **Combined view** (default) — items grouped into four sections: Mail Back → Decide → Shipped → Everything Else, each sorted by urgency
+- **Combined view** (default) — items grouped by urgency: Mail Back → Decide → Shipped, then remaining items grouped by order month
 - **Mail Back tab** — items you need to return (Return Started or Replacement Ordered), sorted by mail-back deadline
 - **Decide tab** — delivered items still within their return window, sorted by deadline
 - **Status tabs** — filter by All, Delivered, Shipped, Ordered, Cancelled, and various return statuses
@@ -60,7 +79,7 @@ Then open [http://localhost:8080](http://localhost:8080).
 
 ## Refreshing data
 
-Re-run `fetch_orders.py` whenever you want to update order statuses. Keep decisions (localStorage) are stored in the browser and will not be overwritten by a data refresh.
+Re-run `fetch_orders.py` (no flags) whenever you want to update order statuses. This refreshes the last 3 months only, so it's fast and safe to run daily. Keep decisions (localStorage) are stored in the browser and will not be overwritten by a data refresh.
 
 To automate this, add a cron job:
 
@@ -68,6 +87,8 @@ To automate this, add a cron job:
 # Runs daily at 6 AM — update the path to match your setup
 0 6 * * * cd /Users/you/OrderHistory && .venv/bin/python3 fetch_orders.py
 ```
+
+**Note on data files:** The old `data/app_data.js` (single-file format) is no longer used and can be deleted once you've fetched at least one year using the new format.
 
 ---
 

@@ -577,31 +577,45 @@ document.querySelectorAll(".tab").forEach(btn => {
 // ---------------------------------------------------------------------------
 function init() {
   const container = document.getElementById("item-list");
+  const manifest = window.ORDER_DATA_MANIFEST;
 
-  if (!window.ORDER_DATA) {
+  if (!manifest || manifest.length === 0) {
     container.innerHTML = `
       <div class="error-state">
         <h2>Could not load order data</h2>
         <p>
           Run <code>.venv/bin/python3 fetch_orders.py</code> to generate
-          <code>data/app_data.js</code>, then open <code>index.html</code>
-          directly in your browser.
+          <code>data/app_data_manifest.js</code> and year data files,
+          then open <code>index.html</code> directly in your browser.
         </p>
       </div>`;
     return;
   }
 
-  const data = window.ORDER_DATA;
-  allItems = data.items || [];
+  // Merge items from all year globals (manifest is newest-year-first)
+  allItems = [];
+  let latestGeneratedAt = null;
+  let email = null;
+  for (const year of manifest) {
+    const yearData = window["ORDER_DATA_" + year];
+    if (!yearData) continue;
+    allItems = allItems.concat(yearData.items || []);
+    if (yearData.generated_at) {
+      if (!latestGeneratedAt || yearData.generated_at > latestGeneratedAt) {
+        latestGeneratedAt = yearData.generated_at;
+      }
+    }
+    if (!email && yearData.email) email = yearData.email;
+  }
 
   const metaBar = document.getElementById("meta-bar");
-  const generated = data.generated_at
-    ? new Date(data.generated_at).toLocaleString("en-US", {
+  const generated = latestGeneratedAt
+    ? new Date(latestGeneratedAt).toLocaleString("en-US", {
         month: "short", day: "numeric", year: "numeric",
         hour: "numeric", minute: "2-digit"
       })
     : null;
-  const emailPart = data.email ? `${data.email} · ` : "";
+  const emailPart = email ? `${email} · ` : "";
   metaBar.textContent =
     emailPart +
     `${allItems.length} item${allItems.length !== 1 ? "s" : ""}` +

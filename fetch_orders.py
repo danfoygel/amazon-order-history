@@ -1,16 +1,22 @@
 #!/usr/bin/env python3
 """
-fetch_orders.py — Scrapes Amazon order history and writes data/app_data.js.
+fetch_orders.py — Scrapes Amazon order history and writes year-partitioned JS data files.
 
 Usage:
-    python fetch_orders.py           # full fetch: last 12 months
-    python fetch_orders.py --incremental  # fast: last 60 days merged with existing data
+    python fetch_orders.py                # incremental: last 3 months, merged into year file(s)
+    python fetch_orders.py --year 2023    # historical backfill: fetch full calendar year 2023
+    python fetch_orders.py --verbose      # add detailed API diagnostics to either mode
 
 Reads credentials from .env (copy .env.example to .env and fill in values).
+
+Data files written:
+    data/app_data_YYYY.js         one file per calendar year
+    data/app_data_manifest.js     lists available years; loaded by index.html
 """
 
+import argparse
+import glob as _glob
 import os
-import sys
 import json
 import time
 import datetime
@@ -39,13 +45,13 @@ load_dotenv()
 # ---------------------------------------------------------------------------
 
 CARRIER_PATTERNS = [
-    ("UPS",   ["ups.com"]),
-    ("USPS",  ["usps.com"]),
-    ("FedEx", ["fedex.com"]),
-    ("DHL",   ["dhl.com"]),
-    ("Amazon",["amazon.com", "track.amazon.com"]),
-    ("OnTrac",["ontrac.com"]),
-    ("LSO",   ["lso.com"]),
+    ("UPS",    ["ups.com"]),
+    ("USPS",   ["usps.com"]),
+    ("FedEx",  ["fedex.com"]),
+    ("DHL",    ["dhl.com"]),
+    ("Amazon", ["amazon.com", "track.amazon.com"]),
+    ("OnTrac", ["ontrac.com"]),
+    ("LSO",    ["lso.com"]),
 ]
 
 
@@ -135,78 +141,29 @@ def build_item_record(order, shipment, item, item_id: str) -> dict:
     image_link = getattr(item, "image_link", None)
 
     return {
-        "item_id":              item_id,
-        "order_id":             order.order_number,
-        "order_date":           order_date,
-        "title":                getattr(item, "title", "") or "",
-        "asin":                 asin,
-        "quantity":             quantity,
-        "unit_price":           unit_price,
-        "total_price":          total_price,
-        "item_link":            link,
-        "image_link":           image_link,
-        "carrier":              detect_carrier(tracking_url),
-        "tracking_url":         tracking_url,
-        "delivery_status":      raw_delivery_status,
-        "order_grand_total":    getattr(order, "grand_total", None),
-        "return_window_end":    return_window_end,
-        "return_status":        "none",
+        "item_id":               item_id,
+        "order_id":              order.order_number,
+        "order_date":            order_date,
+        "title":                 getattr(item, "title", "") or "",
+        "asin":                  asin,
+        "quantity":              quantity,
+        "unit_price":            unit_price,
+        "total_price":           total_price,
+        "item_link":             link,
+        "image_link":            image_link,
+        "carrier":               detect_carrier(tracking_url),
+        "tracking_url":          tracking_url,
+        "delivery_status":       raw_delivery_status,
+        "order_grand_total":     getattr(order, "grand_total", None),
+        "return_window_end":     return_window_end,
+        "return_status":         "none",
         "return_initiated_date": None,
-        "return_notes":         "",
+        "return_notes":          "",
     }
 
 
-# ---------------------------------------------------------------------------
-# Shared: fetch orders for a date cutoff and build item records
-# ---------------------------------------------------------------------------
-
-def _fetch_year_with_retry(amazon_orders, year: int, max_retries: int = 3) -> list:
-    """
-    Fetch a single year of orders with retry on network errors.
-
-    The amazonorders library fires one HTTP request per order in parallel
-    (full_details=True). On macOS this burst can overwhelm the DNS resolver,
-    causing spurious NameResolutionError / ConnectionError failures. Retrying
-    after a short back-off is enough to recover in the vast majority of cases.
-    """
-    for attempt in range(1, max_retries + 1):
-        try:
-            return amazon_orders.get_order_history(year=year, full_details=True)
-        except RequestsConnectionError as exc:
-            if attempt < max_retries:
-                wait = 2 ** (attempt - 1)   # 1 s, 2 s, 4 s …
-                print(
-                    f"  Network error on attempt {attempt}/{max_retries} "
-                    f"(DNS failure or dropped connection) — retrying in {wait}s …"
-                )
-                time.sleep(wait)
-            else:
-                raise SystemExit(
-                    f"\nNetwork error after {max_retries} attempts while fetching {year} orders.\n"
-                    "Check your internet connection and try again.\n"
-                    f"Original error: {exc}"
-                ) from exc
-    return []   # unreachable, keeps type-checkers happy
-
-
-def fetch_and_build(amazon_orders, cutoff: datetime.date) -> list[dict]:
-    """Fetch all orders since cutoff and return a list of item records."""
-    today = datetime.date.today()
-    years_to_fetch = sorted({today.year} | ({today.year - 1} if cutoff.year < today.year else set()))
-
-    all_orders = []
-    for year in years_to_fetch:
-        print(f"Fetching orders for {year}...")
-        year_orders = _fetch_year_with_retry(amazon_orders, year)
-        print(f"  Found {len(year_orders)} orders.")
-        all_orders.extend(year_orders)
-
-    orders = [
-        o for o in all_orders
-        if o.order_placed_date and o.order_placed_date >= cutoff
-    ]
-    print(f"Keeping {len(orders)} orders placed since {cutoff}.")
-
+def build_items_from_orders(orders: list) -> list[dict]:
+    """Convert a list of Order objects into a flat list of item records."""
     items = []
     seen_ids: dict[str, int] = {}
     for order in orders:
@@ -224,33 +181,139 @@ def fetch_and_build(amazon_orders, cutoff: datetime.date) -> list[dict]:
     return items
 
 
-def load_existing_items(output_path: str) -> list[dict]:
-    """Read items from the existing app_data.js, or return empty list."""
-    if not os.path.exists(output_path):
+# ---------------------------------------------------------------------------
+# File I/O
+# ---------------------------------------------------------------------------
+
+def load_existing_items(year: int) -> list[dict]:
+    """Read items from data/app_data_{year}.js, or return empty list."""
+    path = f"data/app_data_{year}.js"
+    if not os.path.exists(path):
         return []
     try:
-        with open(output_path, encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             content = f.read()
-        # Strip the JS wrapper to get raw JSON
-        json_str = content.removeprefix("window.ORDER_DATA = ").removesuffix(";\n")
+        prefix = f"window.ORDER_DATA_{year} = "
+        json_str = content.removeprefix(prefix).removesuffix(";\n")
         return json.loads(json_str).get("items", [])
     except Exception as e:
-        print(f"Warning: could not read existing data ({e}), starting fresh.")
+        print(f"Warning: could not read {path} ({e}), starting fresh.")
         return []
 
 
-def write_output(items: list[dict], output_path: str, email: str | None = None) -> None:
+def write_output(items: list[dict], year: int, email: str | None = None) -> None:
     os.makedirs("data", exist_ok=True)
+    path = f"data/app_data_{year}.js"
     output = {
         "generated_at": datetime.datetime.now(datetime.UTC).isoformat(),
         "email": email,
         "items": items,
     }
-    with open(output_path, "w", encoding="utf-8") as f:
-        f.write("window.ORDER_DATA = ")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(f"window.ORDER_DATA_{year} = ")
         json.dump(output, f, indent=2, default=str)
         f.write(";\n")
-    print(f"Wrote {len(items)} items to {output_path}")
+    print(f"Wrote {len(items)} items to {path}")
+
+
+def write_manifest() -> None:
+    """Scan data/ for app_data_YYYY.js files and write app_data_manifest.js."""
+    files = _glob.glob("data/app_data_[0-9][0-9][0-9][0-9].js")
+    years = sorted(
+        [int(os.path.basename(f)[9:13]) for f in files],
+        reverse=True,  # newest first
+    )
+    os.makedirs("data", exist_ok=True)
+    with open("data/app_data_manifest.js", "w", encoding="utf-8") as f:
+        f.write(f"window.ORDER_DATA_MANIFEST = {json.dumps(years)};\n")
+    print(f"Wrote manifest: {years}")
+
+
+# ---------------------------------------------------------------------------
+# Amazon API helpers
+# ---------------------------------------------------------------------------
+
+def _fetch_year_with_retry(
+    amazon_orders,
+    year: int,
+    max_retries: int = 3,
+    verbose: bool = False,
+) -> list:
+    """
+    Fetch a single year of orders with retry on network errors.
+
+    The amazonorders library fires one HTTP request per order in parallel
+    (full_details=True). On macOS this burst can overwhelm the DNS resolver,
+    causing spurious NameResolutionError / ConnectionError failures. Retrying
+    after a short back-off is enough to recover in the vast majority of cases.
+    """
+    if verbose:
+        print(f"  [API] get_order_history(year={year}, full_details=True)")
+    t0 = time.monotonic()
+    for attempt in range(1, max_retries + 1):
+        try:
+            orders = amazon_orders.get_order_history(year=year, full_details=True)
+            elapsed = time.monotonic() - t0
+            if verbose:
+                print(f"  [API] → {len(orders)} orders returned in {elapsed:.1f}s")
+            return orders
+        except RequestsConnectionError as exc:
+            if attempt < max_retries:
+                wait = 2 ** (attempt - 1)   # 1 s, 2 s, 4 s …
+                print(
+                    f"  Network error on attempt {attempt}/{max_retries} "
+                    f"(DNS failure or dropped connection) — retrying in {wait}s …"
+                )
+                if verbose:
+                    print(f"  [API] Error detail: {exc}")
+                time.sleep(wait)
+            else:
+                raise SystemExit(
+                    f"\nNetwork error after {max_retries} attempts while fetching {year} orders.\n"
+                    "Check your internet connection and try again.\n"
+                    f"Original error: {exc}"
+                ) from exc
+    return []   # unreachable, keeps type-checkers happy
+
+
+def _fetch_incremental_with_retry(
+    amazon_orders,
+    max_retries: int = 3,
+    verbose: bool = False,
+) -> list:
+    """
+    Fetch the last 3 months of orders using the library's native time_filter,
+    with retry on network errors.
+    """
+    if verbose:
+        print('  [API] get_order_history(time_filter="months-3", full_details=True)')
+    t0 = time.monotonic()
+    for attempt in range(1, max_retries + 1):
+        try:
+            orders = amazon_orders.get_order_history(
+                time_filter="months-3", full_details=True
+            )
+            elapsed = time.monotonic() - t0
+            if verbose:
+                print(f"  [API] → {len(orders)} orders returned in {elapsed:.1f}s")
+            return orders
+        except RequestsConnectionError as exc:
+            if attempt < max_retries:
+                wait = 2 ** (attempt - 1)
+                print(
+                    f"  Network error on attempt {attempt}/{max_retries} "
+                    f"(DNS failure or dropped connection) — retrying in {wait}s …"
+                )
+                if verbose:
+                    print(f"  [API] Error detail: {exc}")
+                time.sleep(wait)
+            else:
+                raise SystemExit(
+                    f"\nNetwork error after {max_retries} attempts fetching last 3 months.\n"
+                    "Check your internet connection and try again.\n"
+                    f"Original error: {exc}"
+                ) from exc
+    return []   # unreachable
 
 
 # ---------------------------------------------------------------------------
@@ -258,7 +321,20 @@ def write_output(items: list[dict], output_path: str, email: str | None = None) 
 # ---------------------------------------------------------------------------
 
 def main():
-    incremental = "--incremental" in sys.argv
+    parser = argparse.ArgumentParser(
+        description="Fetch Amazon order history and write year-partitioned JS data files."
+    )
+    parser.add_argument(
+        "--year", type=int, metavar="YYYY",
+        help="Fetch a specific calendar year (historical backfill). "
+             "Writes data/app_data_YYYY.js and updates the manifest.",
+    )
+    parser.add_argument(
+        "--verbose", action="store_true",
+        help="Print detailed diagnostics about Amazon API interactions.",
+    )
+    args = parser.parse_args()
+    verbose = args.verbose
 
     email = os.environ.get("AMAZON_EMAIL")
     password = os.environ.get("AMAZON_PASSWORD")
@@ -268,33 +344,95 @@ def main():
         raise SystemExit("AMAZON_EMAIL and AMAZON_PASSWORD must be set in .env")
 
     print("Logging in to Amazon...")
+    if verbose:
+        print(f"  [API] AmazonSession(email={email!r})")
+    t_login = time.monotonic()
     session = AmazonSession(email, password, otp_secret_key=otp_secret)
     session.login()
+    if verbose:
+        print(f"  [API] Login completed in {time.monotonic() - t_login:.1f}s")
     print("Login successful.")
 
-    today = datetime.date.today()
-    output_path = "data/app_data.js"
     amazon_orders = AmazonOrders(session)
+    today = datetime.date.today()
+    t_total = time.monotonic()
 
-    if incremental:
-        # Fetch 60 days instead of 30: orders placed just outside a 30-day window
-        # can still be in transit (e.g., ordered 35 days ago, shipped last week).
-        # Without a wider window those orders stay cached with their stale status.
-        print("Mode: incremental (last 60 days)")
-        cutoff = today - datetime.timedelta(days=60)
-        new_items = fetch_and_build(amazon_orders, cutoff)
+    if args.year:
+        # ------------------------------------------------------------------
+        # Historical backfill mode: fetch a single complete calendar year
+        # ------------------------------------------------------------------
+        year = args.year
+        print(f"Mode: historical backfill for {year}")
+        print(f"Fetching orders for {year}...")
+        raw_orders = _fetch_year_with_retry(amazon_orders, year, verbose=verbose)
+        print(f"  Found {len(raw_orders)} orders.")
+        items = build_items_from_orders(raw_orders)
+        if verbose:
+            print(f"  [summary] Built {len(items)} item records from {len(raw_orders)} orders")
+        write_output(items, year, email=email)
 
-        # Merge: keep existing items older than cutoff, replace everything newer
-        existing = load_existing_items(output_path)
-        old_items = [i for i in existing if (i.get("order_date") or "") < cutoff.isoformat()]
-        print(f"Keeping {len(old_items)} existing items older than {cutoff}, merging with {len(new_items)} refreshed items.")
-        items = old_items + new_items
     else:
-        print("Mode: full fetch (last 12 months)")
-        cutoff = today - datetime.timedelta(days=365)
-        items = fetch_and_build(amazon_orders, cutoff)
+        # ------------------------------------------------------------------
+        # Incremental mode (default / cron): last 3 months, split by year
+        # ------------------------------------------------------------------
+        print("Mode: incremental (last 3 months)")
+        print("Fetching orders for the last 3 months...")
+        raw_orders = _fetch_incremental_with_retry(amazon_orders, verbose=verbose)
+        print(f"  Found {len(raw_orders)} orders.")
+        new_items = build_items_from_orders(raw_orders)
+        if verbose:
+            print(f"  [summary] Built {len(new_items)} item records from {len(raw_orders)} orders")
 
-    write_output(items, output_path, email=email)
+        # Partition new items by calendar year
+        by_year: dict[int, list[dict]] = {}
+        for item in new_items:
+            y = int((item.get("order_date") or str(today))[:4])
+            by_year.setdefault(y, []).append(item)
+
+        # Always process both the current year and the year 90 days ago
+        # (covers the year-boundary edge case even if one year has zero new items)
+        cutoff_approx = today - datetime.timedelta(days=90)
+        touched_years = {today.year, cutoff_approx.year}
+        if verbose:
+            print(f"  [merge] touched years: {sorted(touched_years)}")
+            print(f"  [merge] new items by year: { {y: len(v) for y, v in by_year.items()} }")
+
+        for year in sorted(touched_years):
+            fresh = by_year.get(year, [])
+            existing = load_existing_items(year)
+
+            if verbose:
+                print(f"  [merge] year {year}: {len(existing)} existing items loaded from disk")
+
+            if fresh:
+                # Determine cutoff as the earliest order_date among fresh items for this year
+                earliest_fresh = min(
+                    (i["order_date"] for i in fresh if i.get("order_date")),
+                    default=cutoff_approx.isoformat(),
+                )
+                kept = [i for i in existing if (i.get("order_date") or "") < earliest_fresh]
+                if verbose:
+                    print(
+                        f"  [merge] year {year}: earliest fresh date = {earliest_fresh}, "
+                        f"keeping {len(kept)} old items + {len(fresh)} fresh items"
+                    )
+            else:
+                # No new items for this year — leave existing file untouched
+                if verbose:
+                    print(f"  [merge] year {year}: no new items, skipping write")
+                continue
+
+            merged = kept + fresh
+            print(
+                f"Year {year}: keeping {len(kept)} existing + "
+                f"{len(fresh)} refreshed = {len(merged)} total"
+            )
+            write_output(merged, year, email=email)
+
+    write_manifest()
+
+    if verbose:
+        print(f"  [summary] Total elapsed: {time.monotonic() - t_total:.1f}s")
 
 
 if __name__ == "__main__":
