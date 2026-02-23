@@ -240,32 +240,40 @@ def write_manifest() -> None:
 class _StderrInterceptor(io.TextIOBase):
     """
     Wraps stderr so that warning lines from the library (which print mid-fetch)
-    are shown cleanly in non-verbose mode: move to a new line first, print the
-    warning, then redraw the progress line so the \r display stays intact.
-    In verbose mode (or when no progress is active), pass through unchanged.
+    don't corrupt the \r progress display in non-verbose mode.
+
+    Instead of printing warnings immediately, we buffer them and flush them
+    after the final progress line in FetchProgress.finish(). In verbose mode
+    (or when no progress is active), writes pass through to real stderr unchanged.
     """
 
     def __init__(self, original_stderr):
         self._orig = original_stderr
         self.progress: "FetchProgress | None" = None
+        self._buffer: list[str] = []
+        self._buf_lock = threading.Lock()
 
     def write(self, s: str) -> int:
         progress = self.progress
         if progress and not progress._verbose and s.strip():
-            # Hold the stdout lock while moving past the progress line,
-            # printing the warning, and redrawing — so the timer thread
-            # can't interleave a \r redraw in the middle of this sequence.
-            with progress._stdout_lock:
-                sys.stdout.write("\n")
-                self._orig.write(s)
-                self._orig.flush()
-                progress._redraw_locked()
+            # Buffer the warning; it will be printed after the final progress line.
+            with self._buf_lock:
+                self._buffer.append(s)
         else:
             self._orig.write(s)
         return len(s)
 
     def flush(self):
         self._orig.flush()
+
+    def flush_buffer(self):
+        """Print any buffered warnings to real stderr and clear the buffer."""
+        with self._buf_lock:
+            lines, self._buffer = self._buffer, []
+        for line in lines:
+            self._orig.write(line)
+        if lines:
+            self._orig.flush()
 
 
 # Module-level stderr interceptor — installed once, reused across fetches.
@@ -442,13 +450,15 @@ class FetchProgress:
                 print(f"  [API] {skipped} unsupported order(s) skipped (Fresh/Whole Foods/physical store): "
                       f"{', '.join(self._skipped_orders)}")
         else:
+            final = f"  {self._label}: {completed}/{total or completed} orders  [{elapsed}]"
             with self._stdout_lock:
-                sys.stdout.write(
-                    f"\r  {self._label}: {completed}/{total or completed} orders  [{elapsed}]\n"
-                )
+                # Pad to 72 chars to fully overwrite the last timer-drawn line,
+                # then end with \n to leave the cursor on a clean new line.
+                sys.stdout.write(f"\r{final:<72}\n")
                 sys.stdout.flush()
             if skipped:
                 print(f"  ({skipped} unsupported order(s) skipped: Fresh/Whole Foods/physical store)")
+            _stderr_interceptor.flush_buffer()
         # Restore patched methods
         self._ao._build_order = self._original_build_order
         self._ao._build_orders_async = self._original_build
