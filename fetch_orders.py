@@ -18,6 +18,8 @@ import argparse
 import glob as _glob
 import os
 import json
+import sys
+import threading
 import time
 import datetime
 import re
@@ -230,6 +232,131 @@ def write_manifest() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Progress display
+# ---------------------------------------------------------------------------
+
+class FetchProgress:
+    """
+    Tracks and displays live progress while get_order_history() runs.
+
+    Strategy:
+    - The library pages through order stubs first (fast), then fires all
+      detail requests in parallel (slow — one HTTP request per order).
+    - We intercept the logging.debug("No next page") call to learn the
+      total order count as soon as paging finishes, before details start.
+    - We wrap get_order() to count each detail completion as it comes in.
+    - A background timer redraws the line every second so elapsed time
+      ticks even if no orders complete (e.g. during initial paging).
+    """
+
+    def __init__(self, amazon_orders, label: str, verbose: bool = False):
+        self._ao = amazon_orders
+        self._label = label
+        self._verbose = verbose
+        self._lock = threading.Lock()
+        self._completed = 0
+        self._total = 0          # set once paging finishes
+        self._t0 = time.monotonic()
+        self._done = False
+
+        # --- Hook 1: intercept get_order for per-order detail progress ---
+        original_get_order = amazon_orders.get_order
+
+        def _patched_get_order(order_id, clone=None):
+            result = original_get_order(order_id, clone=clone)
+            self._on_order_done(order_id)
+            return result
+
+        amazon_orders.get_order = _patched_get_order
+        self._original_get_order = original_get_order
+
+        # --- Hook 2: intercept library logging to detect paging complete ---
+        # The library logs debug("No next page") when all pages are fetched.
+        # At that point, the order stubs are counted; details haven't started.
+        import logging as _logging
+
+        class _PagingHandler(_logging.Handler):
+            def __init__(self_, progress_ref):
+                super().__init__()
+                self_._progress = progress_ref
+
+            def emit(self_, record):
+                msg = record.getMessage()
+                # "No next page" fires once per year/filter when paging ends
+                if "no next page" in msg.lower() or "keep_paging is false" in msg.lower():
+                    # We don't know the count yet from the log message alone;
+                    # set_total() will be called with the real count once the
+                    # library returns. The handler just signals paging is done.
+                    pass
+
+        self._log_handler = _PagingHandler(self)
+        lib_logger = _logging.getLogger("amazonorders.orders")
+        lib_logger.addHandler(self._log_handler)
+        lib_logger.setLevel(_logging.DEBUG)
+
+        # --- Background timer: redraws line every second ---
+        self._timer = threading.Thread(target=self._tick, daemon=True)
+        self._timer.start()
+
+    def _elapsed(self) -> str:
+        secs = int(time.monotonic() - self._t0)
+        return f"{secs // 60}:{secs % 60:02d}"
+
+    def _redraw(self):
+        with self._lock:
+            completed = self._completed
+            total = self._total
+        elapsed = self._elapsed()
+        if total:
+            pct = completed / total * 100
+            line = f"  {self._label}: {completed}/{total} orders ({pct:.0f}%)  [{elapsed}]"
+        else:
+            line = f"  {self._label}: fetching order list …  [{elapsed}]"
+        sys.stdout.write(f"\r{line:<72}")
+        sys.stdout.flush()
+
+    def _tick(self):
+        while not self._done:
+            self._redraw()
+            time.sleep(1)
+
+    def _on_order_done(self, order_id: str):
+        with self._lock:
+            self._completed += 1
+            completed = self._completed
+            total = self._total
+        self._redraw()
+        if self._verbose:
+            sys.stdout.write(
+                f"\n  [API] order {order_id} details fetched"
+                f"  ({completed}/{total or '?'}) [{self._elapsed()}]\n"
+            )
+            sys.stdout.flush()
+
+    def set_total(self, total: int):
+        with self._lock:
+            self._total = total
+        self._redraw()
+
+    def finish(self):
+        self._done = True
+        self._timer.join(timeout=2)
+        # Remove our log handler
+        import logging as _logging
+        _logging.getLogger("amazonorders.orders").removeHandler(self._log_handler)
+        elapsed = self._elapsed()
+        with self._lock:
+            completed = self._completed
+            total = self._total
+        sys.stdout.write(
+            f"\r  {self._label}: {completed}/{total or completed} orders  [{elapsed}]\n"
+        )
+        sys.stdout.flush()
+        # Restore original method
+        self._ao.get_order = self._original_get_order
+
+
+# ---------------------------------------------------------------------------
 # Amazon API helpers
 # ---------------------------------------------------------------------------
 
@@ -249,15 +376,17 @@ def _fetch_year_with_retry(
     """
     if verbose:
         print(f"  [API] get_order_history(year={year}, full_details=True)")
-    t0 = time.monotonic()
     for attempt in range(1, max_retries + 1):
+        progress = FetchProgress(amazon_orders, f"year {year}", verbose=verbose)
         try:
             orders = amazon_orders.get_order_history(year=year, full_details=True)
-            elapsed = time.monotonic() - t0
+            progress.set_total(len(orders))  # ensure total is set even if hook missed it
+            progress.finish()
             if verbose:
-                print(f"  [API] → {len(orders)} orders returned in {elapsed:.1f}s")
+                print(f"  [API] → {len(orders)} orders returned")
             return orders
         except RequestsConnectionError as exc:
+            progress.finish()
             if attempt < max_retries:
                 wait = 2 ** (attempt - 1)   # 1 s, 2 s, 4 s …
                 print(
@@ -287,17 +416,19 @@ def _fetch_incremental_with_retry(
     """
     if verbose:
         print('  [API] get_order_history(time_filter="months-3", full_details=True)')
-    t0 = time.monotonic()
     for attempt in range(1, max_retries + 1):
+        progress = FetchProgress(amazon_orders, "last 3 months", verbose=verbose)
         try:
             orders = amazon_orders.get_order_history(
                 time_filter="months-3", full_details=True
             )
-            elapsed = time.monotonic() - t0
+            progress.set_total(len(orders))
+            progress.finish()
             if verbose:
-                print(f"  [API] → {len(orders)} orders returned in {elapsed:.1f}s")
+                print(f"  [API] → {len(orders)} orders returned")
             return orders
         except RequestsConnectionError as exc:
+            progress.finish()
             if attempt < max_retries:
                 wait = 2 ** (attempt - 1)
                 print(
