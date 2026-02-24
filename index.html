@@ -44,20 +44,11 @@
     </div>
   </dialog>
 
-  <!-- Step 1: manifest sets window.ORDER_DATA_MANIFEST = [2026, 2025, ...] -->
+  <!-- Step 1: manifest sets window.ORDER_DATA_MANIFEST and window.ORDER_DATA_YEAR_COUNTS -->
   <script src="data/app_data_manifest.js"></script>
-  <!-- Step 2: synchronously inject a <script> tag for each year file during page parse -->
-  <script>
-    (function() {
-      var years = window.ORDER_DATA_MANIFEST || [];
-      for (var i = 0; i < years.length; i++) {
-        document.write('<script src="data/app_data_' + years[i] + '.js"><\/script>');
-      }
-    })();
-  </script>
-  <!-- Step 3: Chart.js (for graph modal) -->
+  <!-- Step 2: Chart.js (for graph modal) -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-  <!-- Step 4: app logic runs after all year globals are populated -->
+  <!-- Step 3: app logic — dynamically loads only the year files it needs -->
   <script src="app.js"></script>
 </body>
 </html>

@@ -283,6 +283,13 @@ header h1 {
   transition: background 0.12s, color 0.12s, border-color 0.12s;
 }
 #graph-btn:hover { background: #f9fafb; color: var(--text); }
+#load-all-link {
+  color: var(--color-in-transit);
+  text-decoration: none;
+  font-size: 12px;
+  white-space: nowrap;
+}
+#load-all-link:hover { text-decoration: underline; }
 
 /* ── Graph modal ── */
 #graph-modal {
