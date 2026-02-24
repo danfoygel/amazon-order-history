@@ -17,3 +17,45 @@ Extended `effectiveStatus()` in `app.js` to demote "Replacement Ordered" items t
 ## Item 3: Add a "show graph" button with a stacked bar chart modal ✅ (merged PR #11)
 
 Added a "Show Graph" button that opens a modal with a stacked bar chart (Chart.js via CDN) showing item counts per status per year across all data. Legend, tooltip, and bar stack all ordered Ordered→Cancelled.
+
+--- 
+
+## Item 4: Enable fast load
+
+Even though everything is local, there are almost 6000 items and there is a visible delay in loading the web page.  In most cases, I don't need to see old orders - so let's optimize that case.
+
+When the page is first opened, load the minimum data necessary to show the last 3 months - and then have a link that loads the remaining data files.
+
+Change the header from "X items" to "X of Y items (load all)"
+
+---
+
+## Item 5: Subscribe and Save
+
+Figure out how you can tell if an item was ordered through "subscribe and save" or a regular order.  If it's subscribe and save, show a small icon on the item card indicating this.
+
+---
+
+## Item 6: Return Policy
+
+Figure out what you can determine about the return policy for a given item - I specifically want to know if it's "free returns", or if its a non-returnable item.  Show a small icon on the item card indicating each of these.
+
+---
+
+## Item 7: Monthly Graph
+
+In addition to the annual graph, create the same kind of graph showing the trailing 12 months.  Replace the "Show Graph" button with two, "x Years" and "x Months", where "x" is a tiny icon of a bar graph.
+
+---
+
+## Item 8: Automated Tests
+
+It's time to add some automated tests to this project.  This is a bit tricky, since the data is my personal order history - which shouldn't be part of the tests.  So I think the right approach is to mock the Amazon APIs, have those return some synthetic orders, and then verify that everything works in a deterministic and correct way for those orders.  I want to verify both the fetching process and the web view.
+
+---
+
+## Item 9: Add data to Git
+
+I want to also store my data files in git - but obviously in a private repo that's separate from the main public repo.  I think the right approach is to make it a submodule - can you set that up?
+
+---
