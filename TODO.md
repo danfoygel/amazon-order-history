@@ -42,6 +42,67 @@ Figure out what you can determine about the return policy for a given item - I s
 
 In addition to the annual graph, create the same kind of graph showing the trailing 12 months.  Replace the "Show Graph" button with two, "x Years" and "x Months", where "x" is a tiny icon of a bar graph.
 
+### Implementation Plan (branch: `feat/monthly-graph`)
+
+#### Overview
+
+Replace the single "Show Graph" button with two smaller buttons — `[icon] Years` and `[icon] Months` — each opening the same graph modal with different aggregations:
+- **Years**: the existing stacked bar chart, one bar per calendar year.
+- **Months**: a new stacked bar chart showing the trailing 12 calendar months (one bar per month).
+
+The two charts share the same `<dialog>` element, canvas, and Chart.js instance. The modal title and x-axis label update dynamically based on which button was clicked.
+
+#### Files to change
+
+**`app.js`**
+
+1. **`init()` — swap single button for two buttons.**
+   Currently creates one `<button id="graph-btn">Show Graph</button>` and appends it to `#meta-bar`. Replace with:
+   - A tiny inline SVG bar-chart icon (3 ascending bars, ~12×10 px, `aria-hidden="true"`). Same SVG string reused in both buttons.
+   - `<button class="graph-btn">` (note: class, not ID) containing the SVG + " Years", bound to `openGraphModal("years")`.
+   - A second `<button class="graph-btn">` containing the SVG + " Months", bound to `openGraphModal("months")`.
+   - Both appended to `metaBar`; they sit side-by-side since `#meta-bar` is already `display:flex; gap:10px`.
+
+2. **New `buildMonthlyGraphData()` function.**
+   - Computes the trailing 12 calendar months ending with the current month (e.g. on Feb 24 2026: Mar 2025 → Feb 2026).
+   - Generates `monthKeys` as `["2025-03", "2025-04", ..., "2026-02"]` and corresponding `labels` as `["Mar 2025", ..., "Feb 2026"]`.
+   - Iterates `allItems`, buckets each item by the `YYYY-MM` prefix of its `order_date` and by `effectiveStatus()`. Items outside the 12-month window are ignored.
+   - Returns `{ labels, datasets }` in the same shape as `buildGraphData()` (datasets reversed so Cancelled is bottom of stack, Ordered is top; x-axis labels are month strings instead of year strings).
+
+3. **Modify `openGraphModal(mode)` to accept `"years"` or `"months"`.**
+   - Existing call sites (`addEventListener("click", openGraphModal)`) become `() => openGraphModal("years")` and `() => openGraphModal("months")`.
+   - Inside the function, branch on `mode`:
+     - `"years"`: title = `"Items by Status & Year"`, x-axis title = `"Year"`, call `buildGraphData()`.
+     - `"months"`: title = `"Items by Status (Trailing 12 Months)"`, x-axis title = `"Month"`, call `buildMonthlyGraphData()`.
+   - Everything else (destroy/recreate chart, `requestAnimationFrame` deferral, same Chart.js config) stays the same.
+
+**`style.css`**
+
+- Replace the `#graph-btn` ID selector with `.graph-btn` so the same styles apply to both buttons.
+- Add `display: inline-flex; align-items: center; gap: 4px;` to `.graph-btn` to align the SVG icon with the button text (the icon is `currentColor` so it inherits the button text color including hover/active states automatically).
+
+**`index.html`**
+
+- No changes needed. The `<dialog id="graph-modal">` structure is unchanged; only the title text inside it is updated dynamically by JS.
+
+#### Key decisions
+
+- **Single shared modal** — avoids duplicating dialog markup and Chart.js lifecycle code. The chart is destroyed and recreated on every open regardless, so there is no extra cost.
+- **Trailing 12 months = current month + prior 11 months** — includes the current (possibly incomplete) month. The chart title makes this transparent. (See Q1 below if you prefer complete months only.)
+- **Inline SVG icon** — no emoji, no icon library. Three ascending filled rectangles (~12×10 px). `aria-hidden="true"` because the button label ("Years" / "Months") is already descriptive.
+- **Class instead of ID** — switching from `#graph-btn` to `.graph-btn` cleanly supports two identically-styled buttons without duplicating CSS rules.
+- **Monthly chart uses `allItems`** — same scope as the annual chart, ignoring the current tab/filter. If Item 4 (fast load) is implemented later, both charts will benefit from the same "load all" flow without any special handling here.
+
+#### Questions / Clarification Needed
+
+**Q1: Should the trailing 12 months include the current (partial) month or end at the last complete month?**
+- Current plan: include the current month (e.g. Feb 2026 on Feb 24), showing whatever orders exist so far. The chart title would say "Trailing 12 Months".
+- Alternative: show only the 12 most recent *complete* months (Mar 2025 – Jan 2026). The current month would be omitted since it's in progress.
+
+Answer: include current partial month
+
+**Q2: No other open questions at this time.** The implementation above is otherwise unambiguous given the existing code structure.
+
 ---
 
 ## Item 8: Automated Tests

@@ -638,19 +638,26 @@ function renderMetaBar(manifest, latestGeneratedAt, email) {
 
   const allLoaded = loadedYears.size === manifest.length;
 
+  const barIcon = `<svg width="12" height="10" viewBox="0 0 12 10" fill="currentColor" aria-hidden="true"><rect x="0" y="6" width="3" height="4"/><rect x="4.5" y="3" width="3" height="7"/><rect x="9" y="0" width="3" height="10"/></svg>`;
+
   if (allLoaded) {
-    // Full mode: "email · Y items · Updated …  [Show Graph]"
+    // Full mode: "email · Y items · Updated …  [▐▐▐ Years] [▐▐▐ Months]"
     const metaText = document.createElement("span");
     metaText.textContent =
       emailPart +
       `${allItems.length} item${allItems.length !== 1 ? "s" : ""}` +
       (generated ? ` · Updated ${generated}` : "");
-    const graphBtn = document.createElement("button");
-    graphBtn.id = "graph-btn";
-    graphBtn.textContent = "Show Graph";
-    graphBtn.addEventListener("click", openGraphModal);
+    const yearsBtn = document.createElement("button");
+    yearsBtn.className = "graph-btn";
+    yearsBtn.innerHTML = `${barIcon} Years`;
+    yearsBtn.addEventListener("click", () => openGraphModal("years"));
+    const monthsBtn = document.createElement("button");
+    monthsBtn.className = "graph-btn";
+    monthsBtn.innerHTML = `${barIcon} Months`;
+    monthsBtn.addEventListener("click", () => openGraphModal("months"));
     metaBar.appendChild(metaText);
-    metaBar.appendChild(graphBtn);
+    metaBar.appendChild(yearsBtn);
+    metaBar.appendChild(monthsBtn);
   } else {
     // Partial mode: "email · X of Y items (load all) · Updated …"
     const yPart = totalItemCount > 0 ? ` of ${totalItemCount}` : "";
@@ -855,10 +862,51 @@ function buildGraphData() {
     borderWidth: 0,
   }));
 
-  return { years, datasets };
+  return { labels: years, datasets };
 }
 
-function openGraphModal() {
+function buildMonthlyGraphData() {
+  // Compute the trailing 12 calendar months ending with the current month (inclusive).
+  const today = new Date();
+  const monthKeys = [];
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    monthKeys.push(`${y}-${m}`);
+  }
+
+  // Build human-readable labels: "Mar 2025", "Apr 2025", …
+  const labels = monthKeys.map(key => {
+    const [y, m] = key.split("-");
+    return new Date(Number(y), Number(m) - 1, 1)
+      .toLocaleDateString("en-US", { month: "short", year: "numeric" });
+  });
+
+  // Aggregate items into a Set for quick lookup, then count
+  const monthKeySet = new Set(monthKeys);
+  const byMonth = {};
+  for (const item of allItems) {
+    const key = item.order_date ? item.order_date.slice(0, 7) : null;
+    if (!key || !monthKeySet.has(key)) continue;
+    const status = effectiveStatus(item);
+    if (!byMonth[key]) byMonth[key] = {};
+    byMonth[key][status] = (byMonth[key][status] || 0) + 1;
+  }
+
+  // Same stack order as the annual chart: Cancelled at bottom, Ordered at top.
+  const datasets = [...GRAPH_STATUSES].reverse().map(status => ({
+    label: status,
+    data: monthKeys.map(k => (byMonth[k] && byMonth[k][status]) || 0),
+    backgroundColor: GRAPH_STATUS_COLORS[status],
+    borderColor: GRAPH_STATUS_COLORS[status],
+    borderWidth: 0,
+  }));
+
+  return { labels, datasets };
+}
+
+function openGraphModal(mode) {
   const modal = document.getElementById("graph-modal");
   const canvas = document.getElementById("graph-canvas");
 
@@ -867,7 +915,12 @@ function openGraphModal() {
     graphChartInstance = null;
   }
 
-  const { years, datasets } = buildGraphData();
+  const isMonths = mode === "months";
+  const { labels, datasets } = isMonths ? buildMonthlyGraphData() : buildGraphData();
+  const modalTitle = isMonths ? "Items by Status (Trailing 12 Months)" : "Items by Status & Year";
+  const xAxisTitle = isMonths ? "Month" : "Year";
+
+  document.getElementById("graph-modal-title").textContent = modalTitle;
 
   modal.showModal();
 
@@ -875,13 +928,13 @@ function openGraphModal() {
   requestAnimationFrame(() => {
     graphChartInstance = new Chart(canvas, {
       type: "bar",
-      data: { labels: years, datasets },
+      data: { labels, datasets },
       options: {
         responsive: true,
         maintainAspectRatio: false,
         interaction: { mode: "index", intersect: false },
         scales: {
-          x: { stacked: true, title: { display: true, text: "Year" } },
+          x: { stacked: true, title: { display: true, text: xAxisTitle } },
           y: {
             stacked: true,
             title: { display: true, text: "Items" },
