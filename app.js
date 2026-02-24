@@ -776,7 +776,7 @@ function openGraphModal() {
         },
         plugins: {
           legend: { position: "bottom", reverse: true, labels: { boxWidth: 12, font: { size: 11 } } },
-          tooltip: { mode: "index", intersect: false },
+          tooltip: { mode: "index", intersect: false, reverse: true },
         },
       },
     });
