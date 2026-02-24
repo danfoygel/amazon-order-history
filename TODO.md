@@ -38,7 +38,7 @@ Figure out what you can determine about the return policy for a given item - I s
 
 ---
 
-## Item 7: Monthly Graph
+## Item 7: Monthly Graph ✅ (merged PR #18)
 
 In addition to the annual graph, create the same kind of graph showing the trailing 12 months.  Replace the "Show Graph" button with two, "x Years" and "x Months", where "x" is a tiny icon of a bar graph.
 
