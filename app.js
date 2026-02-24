@@ -6,6 +6,7 @@
 let allItems = [];
 let currentFilter = "combined";
 let currentSearch = "";
+let currentSnsOnly = false;
 let loadedYears = new Set();   // which year files have been fetched so far
 let totalItemCount = 0;        // sum across ALL years (from ORDER_DATA_YEAR_COUNTS)
 
@@ -140,6 +141,7 @@ function filterItems(items, tab, searchQuery) {
   today.setHours(0, 0, 0, 0);
 
   return items.filter(item => {
+    if (currentSnsOnly && !item.subscribe_and_save) return false;
     let tabMatch;
     if (tab === "all") {
       tabMatch = true;
@@ -401,6 +403,10 @@ function renderCard(item) {
     ? `<button class="keep-btn${kept ? " kept" : ""}" title="${keepTitle}">${kept ? "✓ Kept" : "Keep"}</button>`
     : "";
 
+  const snsHtml = item.subscribe_and_save
+    ? `<span class="badge badge-sns" title="Subscribe &amp; Save">↻</span>`
+    : "";
+
   article.innerHTML = `
     <div class="card-top">
       ${thumbnailHtml(item)}
@@ -409,6 +415,7 @@ function renderCard(item) {
         <div class="card-badges">
           ${statusBadgeHtml(effectiveStatus(item))}
           ${returnWindowHtml(item)}
+          ${snsHtml}
         </div>
         <div class="card-meta">
           <span>Ordered ${formatDate(item.order_date)}</span>
@@ -540,6 +547,7 @@ function sortForFilter(filter) {
 function refreshView() {
   if (currentFilter === "combined") {
     const filtered = allItems.filter(item => {
+      if (currentSnsOnly && !item.subscribe_and_save) return false;
       if (!currentSearch) return true;
       const q = currentSearch.toLowerCase();
       return (
@@ -554,6 +562,19 @@ function refreshView() {
     renderList(visible);
   }
   renderTabCounts(allItems);
+
+  // Update S&S count to reflect items in the current tab that are S&S
+  const snsCountEl = document.getElementById("sns-count");
+  if (snsCountEl) {
+    const saved = currentSnsOnly;
+    currentSnsOnly = false;
+    const base = currentFilter === "combined"
+      ? allItems
+      : filterItems(allItems, currentFilter, "");
+    currentSnsOnly = saved;
+    const snsCount = base.filter(i => i.subscribe_and_save).length;
+    snsCountEl.textContent = snsCount > 0 ? `(${snsCount})` : "";
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -561,6 +582,11 @@ function refreshView() {
 // ---------------------------------------------------------------------------
 document.getElementById("search-input").addEventListener("input", e => {
   currentSearch = e.target.value.trim();
+  refreshView();
+});
+
+document.getElementById("sns-filter").addEventListener("change", e => {
+  currentSnsOnly = e.target.checked;
   refreshView();
 });
 

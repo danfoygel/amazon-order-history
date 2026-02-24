@@ -26,9 +26,9 @@ On first load, only the year files covering the last 3 months are fetched dynami
 
 ---
 
-## Item 5: Subscribe and Save
+## Item 5: Subscribe and Save ✅ (merged PR #17)
 
-Figure out how you can tell if an item was ordered through "subscribe and save" or a regular order.  If it's subscribe and save, show a small icon on the item card indicating this.
+Added a `subscribe_and_save` boolean to each item record in `fetch_orders.py` (detected via `order.subscription_discount is not None`). Shows a ↻ badge on S&S item cards, and added a "↻ S&S only" checkbox filter to the right of the status tabs. The checkbox label shows a live count of S&S items in the currently active tab.
 
 ---
 
