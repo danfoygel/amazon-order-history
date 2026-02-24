@@ -228,10 +228,12 @@ def write_manifest() -> None:
         [int(os.path.basename(f)[9:13]) for f in files],
         reverse=True,  # newest first
     )
+    counts = {year: len(read_existing_output(year)) for year in years}
     os.makedirs("data", exist_ok=True)
     with open("data/app_data_manifest.js", "w", encoding="utf-8") as f:
         f.write(f"window.ORDER_DATA_MANIFEST = {json.dumps(years)};\n")
-    print(f"Wrote manifest: {years}")
+        f.write(f"window.ORDER_DATA_YEAR_COUNTS = {json.dumps(counts)};\n")
+    print(f"Wrote manifest: {years} (counts: {counts})")
 
 
 # ---------------------------------------------------------------------------

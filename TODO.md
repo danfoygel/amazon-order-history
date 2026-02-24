@@ -20,13 +20,9 @@ Added a "Show Graph" button that opens a modal with a stacked bar chart (Chart.j
 
 --- 
 
-## Item 4: Enable fast load
+## Item 4: Enable fast load ✅ (merged PR #16)
 
-Even though everything is local, there are almost 6000 items and there is a visible delay in loading the web page.  In most cases, I don't need to see old orders - so let's optimize that case.
-
-When the page is first opened, load the minimum data necessary to show the last 3 months - and then have a link that loads the remaining data files.
-
-Change the header from "X items" to "X of Y items (load all)"
+On first load, only the year files covering the last 3 months are fetched dynamically (at most 2 files). The header shows "X of Y items (load all)" where Y comes from a new `ORDER_DATA_YEAR_COUNTS` map written into the manifest by `fetch_orders.py`. Clicking "(load all)" fetches remaining years and switches the header to "Y items · Show Graph". The "Show Graph" button is hidden until all data is loaded.
 
 ---
 
@@ -42,9 +38,9 @@ Figure out what you can determine about the return policy for a given item - I s
 
 ---
 
-## Item 7: Monthly Graph
+## Item 7: Monthly Graph ✅ (merged PR #18)
 
-In addition to the annual graph, create the same kind of graph showing the trailing 12 months.  Replace the "Show Graph" button with two, "x Years" and "x Months", where "x" is a tiny icon of a bar graph.
+Replaced the "Show Graph" button with two icon buttons — `▐▐▐ Years` and `▐▐▐ Months` — each opening the same modal with a different aggregation. The Years chart is the existing annual stacked bar chart; Months shows a trailing-12-month stacked bar chart (current month included). Both buttons are hidden until all data is loaded (consistent with Item 4 fast-load behavior).
 
 ---
 
@@ -59,3 +55,11 @@ It's time to add some automated tests to this project.  This is a bit tricky, si
 I want to also store my data files in git - but obviously in a private repo that's separate from the main public repo.  I think the right approach is to make it a submodule - can you set that up?
 
 ---
+
+## Item 10: Diagnose "Return in Transit"
+
+There are 73 items in "return in transit" status, most quite old.  This doesn't make sense - there should be essentially zero.  Are these items that I forgot to ship back?  Or did they get lost by the shipping company and never arrived at Amazon?  Or did Amazon receive them but didn't credit me for the return, for some reason?  Investigate this issue - look at some example items in that status from various years, use Chrome to find the tracking number and then access the tracking history, and write an analysis of what you've found.
+
+---
+
+

@@ -7,6 +7,8 @@ let allItems = [];
 let currentFilter = "combined";
 let currentSearch = "";
 let currentSnsOnly = false;
+let loadedYears = new Set();   // which year files have been fetched so far
+let totalItemCount = 0;        // sum across ALL years (from ORDER_DATA_YEAR_COUNTS)
 
 // ---------------------------------------------------------------------------
 // Kept items (localStorage)
@@ -599,9 +601,148 @@ document.querySelectorAll(".tab").forEach(btn => {
 });
 
 // ---------------------------------------------------------------------------
-// Boot
+// Boot — async, with dynamic script loading
 // ---------------------------------------------------------------------------
-function init() {
+
+/** Promise-based dynamic script injector. */
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = src;
+    s.onload = resolve;
+    s.onerror = reject;
+    document.head.appendChild(s);
+  });
+}
+
+/**
+ * Returns the subset of manifest years whose calendar year is >= the year
+ * of (today minus 3 months).  At most 2 years are returned (current + prior).
+ */
+function initialYears(manifest) {
+  const cutoff = new Date();
+  cutoff.setMonth(cutoff.getMonth() - 3);
+  const cutoffYear = cutoff.getFullYear();
+  return manifest.filter(y => y >= cutoffYear);
+}
+
+/**
+ * Merge items from the given years (already loaded as window globals) into
+ * allItems, update loadedYears, and return metadata from the freshest file.
+ */
+function mergeYears(years) {
+  let latestGeneratedAt = null;
+  let email = null;
+  for (const year of years) {
+    if (loadedYears.has(year)) continue;
+    const yearData = window["ORDER_DATA_" + year];
+    if (!yearData) continue;
+    allItems = allItems.concat(yearData.items || []);
+    loadedYears.add(year);
+    if (yearData.generated_at) {
+      if (!latestGeneratedAt || yearData.generated_at > latestGeneratedAt) {
+        latestGeneratedAt = yearData.generated_at;
+      }
+    }
+    if (!email && yearData.email) email = yearData.email;
+  }
+  return { latestGeneratedAt, email };
+}
+
+/** Render the meta-bar content based on current load state. */
+function renderMetaBar(manifest, latestGeneratedAt, email) {
+  const metaBar = document.getElementById("meta-bar");
+  metaBar.innerHTML = "";
+
+  const generated = latestGeneratedAt
+    ? new Date(latestGeneratedAt).toLocaleString("en-US", {
+        month: "short", day: "numeric", year: "numeric",
+        hour: "numeric", minute: "2-digit"
+      })
+    : null;
+  const emailPart = email ? `${email} · ` : "";
+
+  const allLoaded = loadedYears.size === manifest.length;
+
+  const barIcon = `<svg width="12" height="10" viewBox="0 0 12 10" fill="currentColor" aria-hidden="true"><rect x="0" y="6" width="3" height="4"/><rect x="4.5" y="3" width="3" height="7"/><rect x="9" y="0" width="3" height="10"/></svg>`;
+
+  if (allLoaded) {
+    // Full mode: "email · Y items · Updated …  [▐▐▐ Years] [▐▐▐ Months]"
+    const metaText = document.createElement("span");
+    metaText.textContent =
+      emailPart +
+      `${allItems.length} item${allItems.length !== 1 ? "s" : ""}` +
+      (generated ? ` · Updated ${generated}` : "");
+    const yearsBtn = document.createElement("button");
+    yearsBtn.className = "graph-btn";
+    yearsBtn.innerHTML = `${barIcon} Years`;
+    yearsBtn.addEventListener("click", () => openGraphModal("years"));
+    const monthsBtn = document.createElement("button");
+    monthsBtn.className = "graph-btn";
+    monthsBtn.innerHTML = `${barIcon} Months`;
+    monthsBtn.addEventListener("click", () => openGraphModal("months"));
+    metaBar.appendChild(metaText);
+    metaBar.appendChild(yearsBtn);
+    metaBar.appendChild(monthsBtn);
+  } else {
+    // Partial mode: "email · X of Y items (load all) · Updated …"
+    const yPart = totalItemCount > 0 ? ` of ${totalItemCount}` : "";
+    const metaText = document.createElement("span");
+    metaText.textContent = emailPart + `${allItems.length}${yPart} item${totalItemCount !== 1 ? "s" : ""}`;
+
+    const loadLink = document.createElement("a");
+    loadLink.id = "load-all-link";
+    loadLink.href = "#";
+    loadLink.textContent = "(load all)";
+    loadLink.addEventListener("click", e => {
+      e.preventDefault();
+      loadAllYears(manifest);
+    });
+
+    const updatedText = document.createElement("span");
+    updatedText.textContent = generated ? ` · Updated ${generated}` : "";
+
+    metaBar.appendChild(metaText);
+    metaBar.appendChild(document.createTextNode(" "));
+    metaBar.appendChild(loadLink);
+    metaBar.appendChild(updatedText);
+  }
+}
+
+/** Load all remaining (deferred) year files, then re-render. */
+async function loadAllYears(manifest) {
+  const link = document.getElementById("load-all-link");
+  if (link) {
+    link.textContent = "loading\u2026";
+    link.style.pointerEvents = "none";
+  }
+
+  const remaining = manifest.filter(y => !loadedYears.has(y));
+  await Promise.all(remaining.map(y => loadScript(`data/app_data_${y}.js`)));
+
+  mergeYears(remaining);
+
+  // Re-sort allItems newest-first so display order stays consistent
+  allItems.sort((a, b) => (b.order_date || "").localeCompare(a.order_date || ""));
+
+  // Retrieve email/generatedAt across all loaded years for the final header
+  let finalEmail = null;
+  let finalGenAt = null;
+  for (const year of loadedYears) {
+    const yd = window["ORDER_DATA_" + year];
+    if (!yd) continue;
+    if (!finalEmail && yd.email) finalEmail = yd.email;
+    if (yd.generated_at) {
+      if (!finalGenAt || yd.generated_at > finalGenAt) finalGenAt = yd.generated_at;
+    }
+  }
+
+  renderMetaBar(manifest, finalGenAt, finalEmail);
+  logDiagnostics(allItems);
+  refreshView();
+}
+
+async function init() {
   const container = document.getElementById("item-list");
   const manifest = window.ORDER_DATA_MANIFEST;
 
@@ -618,41 +759,21 @@ function init() {
     return;
   }
 
-  // Merge items from all year globals (manifest is newest-year-first)
-  allItems = [];
-  let latestGeneratedAt = null;
-  let email = null;
-  for (const year of manifest) {
-    const yearData = window["ORDER_DATA_" + year];
-    if (!yearData) continue;
-    allItems = allItems.concat(yearData.items || []);
-    if (yearData.generated_at) {
-      if (!latestGeneratedAt || yearData.generated_at > latestGeneratedAt) {
-        latestGeneratedAt = yearData.generated_at;
-      }
-    }
-    if (!email && yearData.email) email = yearData.email;
-  }
+  // Compute total item count from manifest metadata (if available)
+  const yearCounts = window.ORDER_DATA_YEAR_COUNTS || {};
+  totalItemCount = Object.values(yearCounts).reduce((sum, n) => sum + n, 0);
 
-  const metaBar = document.getElementById("meta-bar");
-  const generated = latestGeneratedAt
-    ? new Date(latestGeneratedAt).toLocaleString("en-US", {
-        month: "short", day: "numeric", year: "numeric",
-        hour: "numeric", minute: "2-digit"
-      })
-    : null;
-  const emailPart = email ? `${email} · ` : "";
-  const metaText = document.createElement("span");
-  metaText.textContent =
-    emailPart +
-    `${allItems.length} item${allItems.length !== 1 ? "s" : ""}` +
-    (generated ? ` · Updated ${generated}` : "");
-  const graphBtn = document.createElement("button");
-  graphBtn.id = "graph-btn";
-  graphBtn.textContent = "Show Graph";
-  graphBtn.addEventListener("click", openGraphModal);
-  metaBar.appendChild(metaText);
-  metaBar.appendChild(graphBtn);
+  // Determine which years to load now (those covering the last 3 months)
+  const yearsToLoad = initialYears(manifest);
+
+  // Dynamically load only the needed year scripts
+  await Promise.all(yearsToLoad.map(y => loadScript(`data/app_data_${y}.js`)));
+
+  // Merge loaded year data into allItems
+  const { latestGeneratedAt, email } = mergeYears(yearsToLoad);
+
+  // Build the meta-bar and (conditionally) the Show Graph button
+  renderMetaBar(manifest, latestGeneratedAt, email);
 
   // Activate the default tab visually
   document.querySelectorAll(".tab").forEach(btn => {
@@ -767,10 +888,51 @@ function buildGraphData() {
     borderWidth: 0,
   }));
 
-  return { years, datasets };
+  return { labels: years, datasets };
 }
 
-function openGraphModal() {
+function buildMonthlyGraphData() {
+  // Compute the trailing 12 calendar months ending with the current month (inclusive).
+  const today = new Date();
+  const monthKeys = [];
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    monthKeys.push(`${y}-${m}`);
+  }
+
+  // Build human-readable labels: "Mar 2025", "Apr 2025", …
+  const labels = monthKeys.map(key => {
+    const [y, m] = key.split("-");
+    return new Date(Number(y), Number(m) - 1, 1)
+      .toLocaleDateString("en-US", { month: "short", year: "numeric" });
+  });
+
+  // Aggregate items into a Set for quick lookup, then count
+  const monthKeySet = new Set(monthKeys);
+  const byMonth = {};
+  for (const item of allItems) {
+    const key = item.order_date ? item.order_date.slice(0, 7) : null;
+    if (!key || !monthKeySet.has(key)) continue;
+    const status = effectiveStatus(item);
+    if (!byMonth[key]) byMonth[key] = {};
+    byMonth[key][status] = (byMonth[key][status] || 0) + 1;
+  }
+
+  // Same stack order as the annual chart: Cancelled at bottom, Ordered at top.
+  const datasets = [...GRAPH_STATUSES].reverse().map(status => ({
+    label: status,
+    data: monthKeys.map(k => (byMonth[k] && byMonth[k][status]) || 0),
+    backgroundColor: GRAPH_STATUS_COLORS[status],
+    borderColor: GRAPH_STATUS_COLORS[status],
+    borderWidth: 0,
+  }));
+
+  return { labels, datasets };
+}
+
+function openGraphModal(mode) {
   const modal = document.getElementById("graph-modal");
   const canvas = document.getElementById("graph-canvas");
 
@@ -779,7 +941,12 @@ function openGraphModal() {
     graphChartInstance = null;
   }
 
-  const { years, datasets } = buildGraphData();
+  const isMonths = mode === "months";
+  const { labels, datasets } = isMonths ? buildMonthlyGraphData() : buildGraphData();
+  const modalTitle = isMonths ? "Items by Status (Trailing 12 Months)" : "Items by Status & Year";
+  const xAxisTitle = isMonths ? "Month" : "Year";
+
+  document.getElementById("graph-modal-title").textContent = modalTitle;
 
   modal.showModal();
 
@@ -787,13 +954,13 @@ function openGraphModal() {
   requestAnimationFrame(() => {
     graphChartInstance = new Chart(canvas, {
       type: "bar",
-      data: { labels: years, datasets },
+      data: { labels, datasets },
       options: {
         responsive: true,
         maintainAspectRatio: false,
         interaction: { mode: "index", intersect: false },
         scales: {
-          x: { stacked: true, title: { display: true, text: "Year" } },
+          x: { stacked: true, title: { display: true, text: xAxisTitle } },
           y: {
             stacked: true,
             title: { display: true, text: "Items" },
