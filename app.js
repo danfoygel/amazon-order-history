@@ -707,14 +707,14 @@ const GRAPH_STATUSES = [
 
 // Colors aligned with existing badge palette in style.css
 const GRAPH_STATUS_COLORS = {
-  "Ordered":             "rgba(107,114,128,0.7)",   // pending gray
-  "Shipped":             "rgba(37,99,235,0.7)",      // in-transit blue
-  "Delivered":           "rgba(22,163,74,0.7)",      // delivered green
-  "Replacement Ordered": "rgba(109,40,217,0.7)",     // replacement purple
-  "Return Started":      "rgba(146,64,14,0.7)",      // return-started amber
-  "Return in Transit":   "rgba(8,145,178,0.7)",      // return-transit cyan
-  "Return Complete":     "rgba(107,114,128,0.4)",    // muted gray
-  "Cancelled":           "rgba(220,38,38,0.7)",      // cancelled red
+  "Ordered":             "#6b7280",   // pending gray
+  "Shipped":             "#2563eb",   // in-transit blue
+  "Delivered":           "#16a34a",   // delivered green
+  "Replacement Ordered": "#6d28d9",   // replacement purple
+  "Return Started":      "#92400e",   // return-started amber
+  "Return in Transit":   "#0891b2",   // return-transit cyan
+  "Return Complete":     "#9ca3af",   // muted gray
+  "Cancelled":           "#dc2626",   // cancelled red
 };
 
 let graphChartInstance = null;
@@ -735,10 +735,10 @@ function buildGraphData() {
     label: status,
     data: years.map(y => byYear[y][status] || 0),
     backgroundColor: GRAPH_STATUS_COLORS[status],
-    borderColor: GRAPH_STATUS_COLORS[status].replace("0.7", "1").replace("0.4", "0.8"),
+    borderColor: GRAPH_STATUS_COLORS[status],
     borderWidth: 1,
     fill: true,
-    tension: 0.3,
+    tension: 0,
   }));
 
   return { years, datasets };
