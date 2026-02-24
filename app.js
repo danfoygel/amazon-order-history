@@ -560,6 +560,19 @@ function refreshView() {
     renderList(visible);
   }
   renderTabCounts(allItems);
+
+  // Update S&S count to reflect items in the current tab that are S&S
+  const snsCountEl = document.getElementById("sns-count");
+  if (snsCountEl) {
+    const saved = currentSnsOnly;
+    currentSnsOnly = false;
+    const base = currentFilter === "combined"
+      ? allItems
+      : filterItems(allItems, currentFilter, "");
+    currentSnsOnly = saved;
+    const snsCount = base.filter(i => i.subscribe_and_save).length;
+    snsCountEl.textContent = snsCount > 0 ? `(${snsCount})` : "";
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -645,12 +658,6 @@ function init() {
   document.querySelectorAll(".tab").forEach(btn => {
     btn.classList.toggle("active", btn.dataset.filter === currentFilter);
   });
-
-  const snsCountEl = document.getElementById("sns-count");
-  if (snsCountEl) {
-    const snsCount = allItems.filter(i => i.subscribe_and_save).length;
-    snsCountEl.textContent = snsCount > 0 ? `(${snsCount})` : "";
-  }
 
   logDiagnostics(allItems);
   refreshView();
