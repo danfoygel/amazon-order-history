@@ -774,9 +774,15 @@ function openGraphModal() {
             beginAtZero: true,
           },
         },
+        animation: false,
         plugins: {
           legend: { position: "bottom", reverse: true, labels: { boxWidth: 12, font: { size: 11 } } },
-          tooltip: { mode: "index", intersect: false, reverse: true },
+          tooltip: {
+            mode: "index",
+            intersect: false,
+            reverse: true,
+            filter: (item) => item.parsed.y !== 0,
+          },
         },
       },
     });
