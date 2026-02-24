@@ -616,10 +616,17 @@ function init() {
       })
     : null;
   const emailPart = email ? `${email} · ` : "";
-  metaBar.textContent =
+  const metaText = document.createElement("span");
+  metaText.textContent =
     emailPart +
     `${allItems.length} item${allItems.length !== 1 ? "s" : ""}` +
     (generated ? ` · Updated ${generated}` : "");
+  const graphBtn = document.createElement("button");
+  graphBtn.id = "graph-btn";
+  graphBtn.textContent = "Show Graph";
+  graphBtn.addEventListener("click", openGraphModal);
+  metaBar.appendChild(metaText);
+  metaBar.appendChild(graphBtn);
 
   // Activate the default tab visually
   document.querySelectorAll(".tab").forEach(btn => {
@@ -682,5 +689,121 @@ function logDiagnostics(items) {
   }
   console.groupEnd();
 }
+
+// ---------------------------------------------------------------------------
+// Graph modal — stacked area chart of items per status per year
+// ---------------------------------------------------------------------------
+
+const GRAPH_STATUSES = [
+  "Ordered",
+  "Shipped",
+  "Delivered",
+  "Replacement Ordered",
+  "Return Started",
+  "Return in Transit",
+  "Return Complete",
+  "Cancelled",
+];
+
+// Colors aligned with existing badge palette in style.css
+const GRAPH_STATUS_COLORS = {
+  "Ordered":             "#6b7280",   // pending gray
+  "Shipped":             "#2563eb",   // blue
+  "Delivered":           "#16a34a",   // green
+  "Replacement Ordered": "#6d28d9",   // purple
+  "Return Started":      "#d97706",   // amber
+  "Return in Transit":   "#06b6d4",   // cyan (clearly distinct from blue)
+  "Return Complete":     "#9ca3af",   // muted gray
+  "Cancelled":           "#dc2626",   // red
+};
+
+let graphChartInstance = null;
+
+function buildGraphData() {
+  // Aggregate allItems by order year and effectiveStatus
+  const byYear = {};
+  for (const item of allItems) {
+    const year = item.order_date ? item.order_date.slice(0, 4) : null;
+    if (!year) continue;
+    const status = effectiveStatus(item);
+    if (!byYear[year]) byYear[year] = {};
+    byYear[year][status] = (byYear[year][status] || 0) + 1;
+  }
+
+  const years = Object.keys(byYear).sort();
+  // Datasets ordered Cancelled→Ordered so bars stack with Cancelled at bottom, Ordered at top.
+  // Legend uses reverse:true to display Ordered first (left) and Cancelled last (right).
+  const datasets = [...GRAPH_STATUSES].reverse().map(status => ({
+    label: status,
+    data: years.map(y => byYear[y][status] || 0),
+    backgroundColor: GRAPH_STATUS_COLORS[status],
+    borderColor: GRAPH_STATUS_COLORS[status],
+    borderWidth: 0,
+  }));
+
+  return { years, datasets };
+}
+
+function openGraphModal() {
+  const modal = document.getElementById("graph-modal");
+  const canvas = document.getElementById("graph-canvas");
+
+  if (graphChartInstance) {
+    graphChartInstance.destroy();
+    graphChartInstance = null;
+  }
+
+  const { years, datasets } = buildGraphData();
+
+  modal.showModal();
+
+  // Defer chart creation until the modal is laid out and the canvas has dimensions
+  requestAnimationFrame(() => {
+    graphChartInstance = new Chart(canvas, {
+      type: "bar",
+      data: { labels: years, datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: "index", intersect: false },
+        scales: {
+          x: { stacked: true, title: { display: true, text: "Year" } },
+          y: {
+            stacked: true,
+            title: { display: true, text: "Items" },
+            beginAtZero: true,
+          },
+        },
+        animation: false,
+        plugins: {
+          legend: { position: "bottom", reverse: true, labels: { boxWidth: 12, font: { size: 11 } } },
+          tooltip: {
+            mode: "index",
+            intersect: false,
+            reverse: true,
+            filter: (item) => item.parsed.y !== 0,
+          },
+        },
+      },
+    });
+  });
+}
+
+function closeGraphModal() {
+  const modal = document.getElementById("graph-modal");
+  modal.close();
+  if (graphChartInstance) {
+    graphChartInstance.destroy();
+    graphChartInstance = null;
+  }
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  document.getElementById("graph-modal-close").addEventListener("click", closeGraphModal);
+  // Close on backdrop click
+  document.getElementById("graph-modal").addEventListener("click", e => {
+    if (e.target === e.currentTarget) closeGraphModal();
+  });
+});
 
 init();
