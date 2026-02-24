@@ -20,13 +20,9 @@ Added a "Show Graph" button that opens a modal with a stacked bar chart (Chart.j
 
 --- 
 
-## Item 4: Enable fast load
+## Item 4: Enable fast load ✅ (merged PR #16)
 
-Even though everything is local, there are almost 6000 items and there is a visible delay in loading the web page.  In most cases, I don't need to see old orders - so let's optimize that case.
-
-When the page is first opened, load the minimum data necessary to show the last 3 months - and then have a link that loads the remaining data files.
-
-Change the header from "X items" to "X of Y items (load all)"
+On first load, only the year files covering the last 3 months are fetched dynamically (at most 2 files). The header shows "X of Y items (load all)" where Y comes from a new `ORDER_DATA_YEAR_COUNTS` map written into the manifest by `fetch_orders.py`. Clicking "(load all)" fetches remaining years and switches the header to "Y items · Show Graph". The "Show Graph" button is hidden until all data is loaded.
 
 ---
 
