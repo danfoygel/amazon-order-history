@@ -6,4 +6,4 @@ For all code changes: create a PR and ask the user to review and approve before 
 
 ## TODO.md
 
-The user edits TODO.md periodically. When merging any PR, check if TODO.md has local uncommitted changes and include them in the merge (either bundle into the PR branch before merging, or as a follow-up commit via a small PR immediately after).
+The user edits TODO.md periodically. It's fine to leave it uncommitted on disk. When creating the next PR for any other reason, check if TODO.md has local uncommitted changes and bundle them into that PR branch before merging.

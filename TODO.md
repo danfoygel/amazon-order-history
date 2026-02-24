@@ -1,5 +1,19 @@
 # Todo List
 
-- [ ] Change display order of statuses - all, ordered, shipped, delivered, replacement ordered, return started, return in transit, return complete, cancelled
-- [ ] Fix "replacement ordered" items way past the deadline, just like we already do for returns
-- [ ] Add a "show graph" button that opens a modal over the item cards that shows a stacked area chart the shows the number of items in each status by year
+---
+
+## Item 1: Change display order of statuses ✅ (merged PR #9)
+
+Reordered status filter tabs in `index.html` to: All, Ordered, Shipped, Delivered, Replacement Ordered, Return Started, Return in Transit, Return Complete, Cancelled.
+
+---
+
+## Item 2: Fix "replacement ordered" items way past the deadline ✅ (merged PR #10)
+
+Extended `effectiveStatus()` in `app.js` to demote "Replacement Ordered" items that are >30 days past their `return_window_end` to "Delivered", consistent with existing "Return Started" logic.
+
+---
+
+## Item 3: Add a "show graph" button with a stacked bar chart modal ✅ (merged PR #11)
+
+Added a "Show Graph" button that opens a modal with a stacked bar chart (Chart.js via CDN) showing item counts per status per year across all data. Legend, tooltip, and bar stack all ordered Ordered→Cancelled.
