@@ -201,6 +201,7 @@ header h1 {
 .badge-return-transit    { background: #cffafe; color: var(--color-return-active); }
 .badge-return-complete   { background: #f3f4f6; color: var(--color-pending); }
 .badge-replacement       { background: #ede9fe; color: #6d28d9; }
+.badge-sns               { background: #d1fae5; color: #065f46; }
 
 /* ── Return window badges (Delivered items) ── */
 .return-badge-ok       { background: #f3f4f6; color: var(--color-pending); }

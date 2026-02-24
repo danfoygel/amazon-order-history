@@ -399,6 +399,10 @@ function renderCard(item) {
     ? `<button class="keep-btn${kept ? " kept" : ""}" title="${keepTitle}">${kept ? "✓ Kept" : "Keep"}</button>`
     : "";
 
+  const snsHtml = item.subscribe_and_save
+    ? `<span class="badge badge-sns" title="Subscribe &amp; Save">↻</span>`
+    : "";
+
   article.innerHTML = `
     <div class="card-top">
       ${thumbnailHtml(item)}
@@ -407,6 +411,7 @@ function renderCard(item) {
         <div class="card-badges">
           ${statusBadgeHtml(effectiveStatus(item))}
           ${returnWindowHtml(item)}
+          ${snsHtml}
         </div>
         <div class="card-meta">
           <span>Ordered ${formatDate(item.order_date)}</span>

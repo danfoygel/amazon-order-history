@@ -163,6 +163,7 @@ def build_item_record(order, shipment, item, item_id: str) -> dict:
         "return_status":         "none",
         "return_initiated_date": None,
         "return_notes":          "",
+        "subscribe_and_save":    getattr(order, "subscription_discount", None) is not None,
     }
 
 
