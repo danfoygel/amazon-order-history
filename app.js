@@ -708,13 +708,13 @@ const GRAPH_STATUSES = [
 // Colors aligned with existing badge palette in style.css
 const GRAPH_STATUS_COLORS = {
   "Ordered":             "#6b7280",   // pending gray
-  "Shipped":             "#2563eb",   // in-transit blue
-  "Delivered":           "#16a34a",   // delivered green
-  "Replacement Ordered": "#6d28d9",   // replacement purple
-  "Return Started":      "#92400e",   // return-started amber
-  "Return in Transit":   "#0891b2",   // return-transit cyan
+  "Shipped":             "#2563eb",   // blue
+  "Delivered":           "#16a34a",   // green
+  "Replacement Ordered": "#6d28d9",   // purple
+  "Return Started":      "#d97706",   // amber
+  "Return in Transit":   "#06b6d4",   // cyan (clearly distinct from blue)
   "Return Complete":     "#9ca3af",   // muted gray
-  "Cancelled":           "#dc2626",   // cancelled red
+  "Cancelled":           "#dc2626",   // red
 };
 
 let graphChartInstance = null;
@@ -731,7 +731,8 @@ function buildGraphData() {
   }
 
   const years = Object.keys(byYear).sort();
-  const datasets = GRAPH_STATUSES.map(status => ({
+  // Reverse so the chart stacks bottom-to-top in the same order the legend reads top-to-bottom
+  const datasets = [...GRAPH_STATUSES].reverse().map(status => ({
     label: status,
     data: years.map(y => byYear[y][status] || 0),
     backgroundColor: GRAPH_STATUS_COLORS[status],
@@ -753,29 +754,32 @@ function openGraphModal() {
 
   const { years, datasets } = buildGraphData();
 
-  graphChartInstance = new Chart(canvas, {
-    type: "bar",
-    data: { labels: years, datasets },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      interaction: { mode: "index", intersect: false },
-      scales: {
-        x: { stacked: true, title: { display: true, text: "Year" } },
-        y: {
-          stacked: true,
-          title: { display: true, text: "Items" },
-          beginAtZero: true,
+  modal.showModal();
+
+  // Defer chart creation until the modal is laid out and the canvas has dimensions
+  requestAnimationFrame(() => {
+    graphChartInstance = new Chart(canvas, {
+      type: "bar",
+      data: { labels: years, datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: "index", intersect: false },
+        scales: {
+          x: { stacked: true, title: { display: true, text: "Year" } },
+          y: {
+            stacked: true,
+            title: { display: true, text: "Items" },
+            beginAtZero: true,
+          },
+        },
+        plugins: {
+          legend: { position: "bottom", labels: { boxWidth: 12, font: { size: 11 } } },
+          tooltip: { mode: "index", intersect: false },
         },
       },
-      plugins: {
-        legend: { position: "bottom", labels: { boxWidth: 12, font: { size: 11 } } },
-        tooltip: { mode: "index", intersect: false },
-      },
-    },
+    });
   });
-
-  modal.showModal();
 }
 
 function closeGraphModal() {
