@@ -222,6 +222,17 @@ header h1 {
 .return-badge-overdue  { background: #fee2e2; color: var(--color-cancelled); }
 .return-badge-closed   { background: #f3f4f6; color: var(--color-pending); text-decoration: line-through; opacity: 0.7; }
 
+/* ── Return policy icons ── */
+.return-policy-icon {
+  display: inline-block;
+  vertical-align: middle;
+  flex-shrink: 0;
+  cursor: default;
+  opacity: 0.85;
+}
+.return-free-icon           { color: #16a34a; } /* green-600 */
+.return-nonreturnable-icon  { color: #dc2626; } /* red-600   */
+
 /* ── Keep button ── */
 .keep-btn {
   position: absolute;

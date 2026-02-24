@@ -29,6 +29,11 @@ from urllib.parse import urlparse
 from dotenv import load_dotenv
 
 try:
+    from dateutil import parser as _dateutil_parser
+except ImportError:
+    _dateutil_parser = None
+
+try:
     from amazonorders.session import AmazonSession
     from amazonorders.orders import AmazonOrders
     from amazonorders.conf import AmazonOrdersConfig
@@ -123,16 +128,75 @@ def slugify(text: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Return policy extraction from item HTML
+# ---------------------------------------------------------------------------
+
+def _parse_return_date(text: str) -> str | None:
+    """Extract an ISO date from return eligibility text such as
+    'Return or replace items: Eligible through March 22, 2026'."""
+    if _dateutil_parser is None:
+        return None
+    try:
+        d = _dateutil_parser.parse(text, fuzzy=True).date()
+        return d.isoformat()
+    except (ValueError, OverflowError):
+        return None
+
+
+def extract_return_info(item) -> tuple[str | None, str | None]:
+    """Read item.parsed HTML to determine return window end date and policy.
+
+    Returns (return_window_end, return_policy) where return_policy is one of:
+      "free_or_replace"  — "Return or replace items" text found (Amazon-fulfilled;
+                           replacement option indicates likely free returns)
+      "return_only"      — "Return items" text found (return-only, possibly
+                           third-party seller; may or may not be free)
+      "non_returnable"   — no return span AND connections div is completely empty
+                           (characteristic of food, consumables, and similar
+                           non-returnable categories)
+      None               — ambiguous (no return span but connections div has
+                           content, e.g. expired window on a normal item)
+    """
+    parsed = getattr(item, "parsed", None)
+    if parsed is None:
+        return None, None
+
+    # Amazon's current HTML puts return eligibility in a span.a-size-small that
+    # contains the text "Eligible through".  The older data-component selector
+    # (data-component='itemReturnEligibility') is no longer used by Amazon.
+    for span in parsed.select("span.a-size-small"):
+        text = span.get_text(" ", strip=True)
+        lower = text.lower()
+        if "eligible through" not in lower:
+            continue
+        date_str = _parse_return_date(text)
+        if "return or replace items" in lower:
+            return date_str, "free_or_replace"
+        else:
+            return date_str, "return_only"
+
+    # No return span — check whether the item-level connections div is empty.
+    # A completely empty div (no Buy-it-again, no return buttons) is the pattern
+    # seen for non-returnable items (food, supplements, consumables, etc.).
+    connections = parsed.select_one(".yohtmlc-item-level-connections")
+    if connections is not None and not connections.get_text(strip=True):
+        return None, "non_returnable"
+
+    return None, None  # ambiguous: expired window or unknown
+
+
+# ---------------------------------------------------------------------------
 # Build a single item record
 # ---------------------------------------------------------------------------
 
 def build_item_record(order, shipment, item, item_id: str) -> dict:
     order_date = date_to_iso(order.order_placed_date)
-    return_window_end = (
-        date_to_iso(item.return_eligible_date)
-        if getattr(item, "return_eligible_date", None)
-        else add_days(order_date, 30)
-    )
+
+    # Use the new HTML-based extractor instead of the library's return_eligible_date
+    # field (which used a now-obsolete CSS selector and always returned None).
+    # The fallback order_date+30 default has been removed — null is more accurate
+    # than a synthetic date when Amazon doesn't show return eligibility.
+    return_window_end, return_policy = extract_return_info(item)
 
     raw_delivery_status = getattr(shipment, "delivery_status", None) or ""
     tracking_url = getattr(shipment, "tracking_link", None)
@@ -160,6 +224,7 @@ def build_item_record(order, shipment, item, item_id: str) -> dict:
         "delivery_status":       raw_delivery_status,
         "order_grand_total":     getattr(order, "grand_total", None),
         "return_window_end":     return_window_end,
+        "return_policy":         return_policy,
         "return_status":         "none",
         "return_initiated_date": None,
         "return_notes":          "",
