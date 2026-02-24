@@ -736,9 +736,7 @@ function buildGraphData() {
     data: years.map(y => byYear[y][status] || 0),
     backgroundColor: GRAPH_STATUS_COLORS[status],
     borderColor: GRAPH_STATUS_COLORS[status],
-    borderWidth: 1,
-    fill: true,
-    tension: 0,
+    borderWidth: 0,
   }));
 
   return { years, datasets };
@@ -756,14 +754,14 @@ function openGraphModal() {
   const { years, datasets } = buildGraphData();
 
   graphChartInstance = new Chart(canvas, {
-    type: "line",
+    type: "bar",
     data: { labels: years, datasets },
     options: {
       responsive: true,
       maintainAspectRatio: false,
       interaction: { mode: "index", intersect: false },
       scales: {
-        x: { title: { display: true, text: "Year" } },
+        x: { stacked: true, title: { display: true, text: "Year" } },
         y: {
           stacked: true,
           title: { display: true, text: "Items" },
