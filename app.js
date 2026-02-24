@@ -731,7 +731,8 @@ function buildGraphData() {
   }
 
   const years = Object.keys(byYear).sort();
-  // Reverse so the chart stacks bottom-to-top in the same order the legend reads top-to-bottom
+  // Datasets ordered Cancelled→Ordered so bars stack with Cancelled at bottom, Ordered at top.
+  // Legend uses reverse:true to display Ordered first (left) and Cancelled last (right).
   const datasets = [...GRAPH_STATUSES].reverse().map(status => ({
     label: status,
     data: years.map(y => byYear[y][status] || 0),
@@ -774,7 +775,7 @@ function openGraphModal() {
           },
         },
         plugins: {
-          legend: { position: "bottom", labels: { boxWidth: 12, font: { size: 11 } } },
+          legend: { position: "bottom", reverse: true, labels: { boxWidth: 12, font: { size: 11 } } },
           tooltip: { mode: "index", intersect: false },
         },
       },
