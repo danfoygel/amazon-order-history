@@ -6,6 +6,7 @@
 let allItems = [];
 let currentFilter = "combined";
 let currentSearch = "";
+let currentSnsOnly = false;
 
 // ---------------------------------------------------------------------------
 // Kept items (localStorage)
@@ -138,6 +139,7 @@ function filterItems(items, tab, searchQuery) {
   today.setHours(0, 0, 0, 0);
 
   return items.filter(item => {
+    if (currentSnsOnly && !item.subscribe_and_save) return false;
     let tabMatch;
     if (tab === "all") {
       tabMatch = true;
@@ -543,6 +545,7 @@ function sortForFilter(filter) {
 function refreshView() {
   if (currentFilter === "combined") {
     const filtered = allItems.filter(item => {
+      if (currentSnsOnly && !item.subscribe_and_save) return false;
       if (!currentSearch) return true;
       const q = currentSearch.toLowerCase();
       return (
@@ -564,6 +567,11 @@ function refreshView() {
 // ---------------------------------------------------------------------------
 document.getElementById("search-input").addEventListener("input", e => {
   currentSearch = e.target.value.trim();
+  refreshView();
+});
+
+document.getElementById("sns-filter").addEventListener("change", e => {
+  currentSnsOnly = e.target.checked;
   refreshView();
 });
 

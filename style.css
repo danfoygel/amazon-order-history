@@ -99,6 +99,19 @@ header h1 {
 }
 .tab-action:hover { background: #fff7ed; color: var(--accent); }
 .tab-action.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+#sns-filter-label {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+}
+#sns-filter-label:hover { color: var(--text); }
+#sns-filter-label input { cursor: pointer; }
 .count {
   display: inline-block;
   background: rgba(0,0,0,0.08);
