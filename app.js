@@ -344,6 +344,23 @@ function returnWindowHtml(item) {
 }
 
 // ---------------------------------------------------------------------------
+// Return policy icon
+// ---------------------------------------------------------------------------
+function returnPolicyIcon(item) {
+  const policy = item.return_policy;
+  if (policy === "free_or_replace") {
+    // Circular return arrow — indicates Amazon-fulfilled free returns
+    return `<svg class="return-policy-icon return-free-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Free returns"><title>Free returns</title><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 .49-3.51"></path></svg>`;
+  }
+  if (policy === "non_returnable") {
+    // Circle with diagonal slash — non-returnable
+    return `<svg class="return-policy-icon return-nonreturnable-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Non-returnable"><title>Non-returnable</title><circle cx="12" cy="12" r="10"></circle><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line></svg>`;
+  }
+  // return_only or null/missing: no icon shown
+  return "";
+}
+
+// ---------------------------------------------------------------------------
 // Thumbnail
 // ---------------------------------------------------------------------------
 function thumbnailHtml(item) {
@@ -416,6 +433,7 @@ function renderCard(item) {
           ${statusBadgeHtml(effectiveStatus(item))}
           ${returnWindowHtml(item)}
           ${snsHtml}
+          ${returnPolicyIcon(item)}
         </div>
         <div class="card-meta">
           <span>Ordered ${formatDate(item.order_date)}</span>

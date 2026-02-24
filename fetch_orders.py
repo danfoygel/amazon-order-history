@@ -29,6 +29,16 @@ from urllib.parse import urlparse
 from dotenv import load_dotenv
 
 try:
+    from dateutil import parser as _dateutil_parser
+except ImportError:
+    _dateutil_parser = None
+
+try:
+    from bs4 import BeautifulSoup as _BeautifulSoup
+except ImportError:
+    _BeautifulSoup = None
+
+try:
     from amazonorders.session import AmazonSession
     from amazonorders.orders import AmazonOrders
     from amazonorders.conf import AmazonOrdersConfig
@@ -123,16 +133,240 @@ def slugify(text: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Return policy extraction from item HTML
+# ---------------------------------------------------------------------------
+
+def _parse_return_date(text: str) -> str | None:
+    """Extract an ISO date from return eligibility text such as
+    'Return or replace items: Eligible through March 22, 2026'."""
+    if _dateutil_parser is None:
+        return None
+    try:
+        d = _dateutil_parser.parse(text, fuzzy=True).date()
+        return d.isoformat()
+    except (ValueError, OverflowError):
+        return None
+
+
+def extract_return_info(item) -> tuple[str | None, str | None]:
+    """Read item.parsed HTML to determine return window end date and a
+    preliminary return policy hint.
+
+    NOTE: The return_policy value returned here is a best-effort heuristic
+    derived from the order detail page and may be inaccurate (e.g. Amazon
+    shows a return window for non-returnable food/supplement items).
+    enrich_items_with_asin_cache() fetches each item's product page and
+    overrides return_policy with the authoritative value when it finds one.
+
+    Returns (return_window_end, return_policy) where return_policy is one of:
+      "free_or_replace"  — "Return or replace items" text found (Amazon-fulfilled;
+                           replacement option indicates likely free returns)
+      "return_only"      — "Return items" text found (return-only, possibly
+                           third-party seller; may or may not be free)
+      "non_returnable"   — no return span AND connections div is completely empty
+                           (characteristic of food, consumables, and similar
+                           non-returnable categories on the order page)
+      None               — ambiguous (no return span but connections div has
+                           content, e.g. expired window on a normal item)
+    """
+    parsed = getattr(item, "parsed", None)
+    if parsed is None:
+        return None, None
+
+    # Amazon's current HTML puts return eligibility in a span.a-size-small that
+    # contains the text "Eligible through".  The older data-component selector
+    # (data-component='itemReturnEligibility') is no longer used by Amazon.
+    for span in parsed.select("span.a-size-small"):
+        text = span.get_text(" ", strip=True)
+        lower = text.lower()
+        if "eligible through" not in lower:
+            continue
+        date_str = _parse_return_date(text)
+        if "return or replace items" in lower:
+            return date_str, "free_or_replace"
+        else:
+            return date_str, "return_only"
+
+    # No return span — check whether the item-level connections div is empty.
+    # A completely empty div (no Buy-it-again, no return buttons) is the pattern
+    # seen for non-returnable items (food, supplements, consumables, etc.).
+    connections = parsed.select_one(".yohtmlc-item-level-connections")
+    if connections is not None and not connections.get_text(strip=True):
+        return None, "non_returnable"
+
+    return None, None  # ambiguous: expired window or unknown
+
+
+# ---------------------------------------------------------------------------
+# ASIN product-page cache
+# ---------------------------------------------------------------------------
+
+ASIN_CACHE_PATH = "data/asin_cache.json"
+
+
+def load_asin_cache() -> dict:
+    """Load data/asin_cache.json, returning {} if absent or unreadable."""
+    if not os.path.exists(ASIN_CACHE_PATH):
+        return {}
+    try:
+        with open(ASIN_CACHE_PATH, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as exc:
+        print(f"Warning: could not read ASIN cache ({exc}); starting fresh.")
+        return {}
+
+
+def save_asin_cache(cache: dict) -> None:
+    """Write the ASIN cache to disk, creating data/ if needed."""
+    os.makedirs("data", exist_ok=True)
+    with open(ASIN_CACHE_PATH, "w", encoding="utf-8") as f:
+        json.dump(cache, f, indent=2, sort_keys=True)
+        f.write("\n")
+
+
+_PRODUCT_PAGE_HEADERS = {
+    # Use a real browser UA so Amazon returns product pages rather than 503s.
+    # The amazonorders session defaults to 'python-requests/…' which is
+    # immediately flagged and receives service-unavailable error pages.
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/121.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Connection": "keep-alive",
+    "Upgrade-Insecure-Requests": "1",
+}
+
+
+def fetch_product_page_info(session, asin: str, verbose: bool = False) -> "dict | None":
+    """GET the product detail page for one ASIN and extract cacheable fields.
+
+    Returns:
+        dict  — successful fetch; individual field values may be None if the
+                signal wasn't found on the page.
+        None  — network / HTTP error; caller should not cache this result.
+
+    Currently extracted fields:
+        return_policy  "free_or_replace" | "non_returnable" | None
+    """
+    if _BeautifulSoup is None:
+        if verbose:
+            print(f"    [{asin}] bs4 not installed — cannot fetch product page")
+        return None
+    url = f"https://www.amazon.com/dp/{asin}"
+    try:
+        resp = session.session.get(url, headers=_PRODUCT_PAGE_HEADERS, timeout=15)
+        if resp.status_code != 200:
+            if verbose:
+                print(f"    [{asin}] HTTP {resp.status_code}")
+            return None
+        soup = _BeautifulSoup(resp.text, "html.parser")
+        # Strip customer-review sections to avoid false positives from review text
+        for el in soup.select("#customerReviews, #reviews-medley, #cr-medley"):
+            el.decompose()
+        text = soup.get_text(" ", strip=True).lower()
+        result: dict = {}
+        if "non-returnable" in text:
+            result["return_policy"] = "non_returnable"
+        elif "free returns" in text:
+            result["return_policy"] = "free_or_replace"
+        else:
+            result["return_policy"] = None  # page loaded but no clear signal
+        if verbose:
+            print(f"    [{asin}] return_policy = {result['return_policy']!r}")
+        return result
+    except Exception as exc:
+        if verbose:
+            print(f"    [{asin}] error: {exc}")
+        return None
+
+
+def enrich_items_with_asin_cache(
+    items: list,
+    session,
+    verbose: bool = False,
+) -> None:
+    """Fetch product pages for uncached ASINs; apply cached data to all items.
+
+    Modifies items in-place.  Updates data/asin_cache.json with new entries.
+
+    Fields applied from cache:
+        return_policy   — product-page value overrides the order-page heuristic
+                          when the product page gives a definitive answer
+                          (non-None); a None from the product page means "couldn't
+                          determine", so the order-page value is kept as fallback.
+        return_window_end — cleared to None for non_returnable items (a date
+                            for a non-returnable item would be misleading).
+    """
+    cache = load_asin_cache()
+
+    unique_asins = {item["asin"] for item in items if item.get("asin")}
+    uncached = sorted(unique_asins - set(cache))
+
+    # Standard Amazon ASINs start with B; ISBN-10 codes (books) use digit-only
+    # strings and consistently return HTTP 500 via /dp/ — skip them.
+    AMAZON_ASIN_RE = re.compile(r"^B[A-Z0-9]{9}$")
+    uncached = [a for a in uncached if AMAZON_ASIN_RE.match(a)]
+
+    if uncached:
+        print(f"Fetching product pages for {len(uncached)} new ASIN(s)…")
+        fetched = 0
+        for i, asin in enumerate(uncached, 1):
+            if not verbose:
+                sys.stdout.write(f"\r  {i}/{len(uncached)}: {asin:<12}  ")
+                sys.stdout.flush()
+            else:
+                print(f"  [{i}/{len(uncached)}] {asin}")
+            info = fetch_product_page_info(session, asin, verbose=verbose)
+            if info is not None:
+                info["_fetched_at"] = datetime.datetime.now(datetime.UTC).isoformat()
+                cache[asin] = info
+                fetched += 1
+            time.sleep(1.0)  # polite pacing between requests
+
+        if not verbose:
+            sys.stdout.write(
+                f"\r  Done. {fetched}/{len(uncached)} pages fetched.{' ' * 20}\n"
+            )
+            sys.stdout.flush()
+        save_asin_cache(cache)
+        if verbose:
+            print(f"  ASIN cache: {len(cache)} total entries after update.")
+
+    # Apply cached fields to every item in the list
+    updated = 0
+    for item in items:
+        asin = item.get("asin")
+        if not asin or asin not in cache:
+            continue
+        cached = cache[asin]
+        policy = cached.get("return_policy")
+        # Only override when the product page gave a definitive (non-None) answer.
+        # None means "page loaded but no clear signal" — keep the order-page hint.
+        if policy is not None:
+            item["return_policy"] = policy
+            if policy == "non_returnable":
+                item["return_window_end"] = None
+            updated += 1
+    if verbose and updated:
+        print(f"  Applied ASIN cache to {updated} item(s).")
+
+
+# ---------------------------------------------------------------------------
 # Build a single item record
 # ---------------------------------------------------------------------------
 
 def build_item_record(order, shipment, item, item_id: str) -> dict:
     order_date = date_to_iso(order.order_placed_date)
-    return_window_end = (
-        date_to_iso(item.return_eligible_date)
-        if getattr(item, "return_eligible_date", None)
-        else add_days(order_date, 30)
-    )
+
+    # Use the new HTML-based extractor instead of the library's return_eligible_date
+    # field (which used a now-obsolete CSS selector and always returned None).
+    # The fallback order_date+30 default has been removed — null is more accurate
+    # than a synthetic date when Amazon doesn't show return eligibility.
+    return_window_end, return_policy = extract_return_info(item)
 
     raw_delivery_status = getattr(shipment, "delivery_status", None) or ""
     tracking_url = getattr(shipment, "tracking_link", None)
@@ -160,6 +394,7 @@ def build_item_record(order, shipment, item, item_id: str) -> dict:
         "delivery_status":       raw_delivery_status,
         "order_grand_total":     getattr(order, "grand_total", None),
         "return_window_end":     return_window_end,
+        "return_policy":         return_policy,
         "return_status":         "none",
         "return_initiated_date": None,
         "return_notes":          "",
@@ -620,6 +855,7 @@ def main():
         items = build_items_from_orders(raw_orders)
         if verbose:
             print(f"  [summary] Built {len(items)} item records from {len(raw_orders)} orders")
+        enrich_items_with_asin_cache(items, session, verbose=verbose)
         write_output(items, year, email=email)
 
     else:
@@ -633,6 +869,7 @@ def main():
         new_items = build_items_from_orders(raw_orders)
         if verbose:
             print(f"  [summary] Built {len(new_items)} item records from {len(raw_orders)} orders")
+        enrich_items_with_asin_cache(new_items, session, verbose=verbose)
 
         # Partition new items by calendar year
         by_year: dict[int, list[dict]] = {}
