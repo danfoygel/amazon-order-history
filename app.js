@@ -646,6 +646,12 @@ function init() {
     btn.classList.toggle("active", btn.dataset.filter === currentFilter);
   });
 
+  const snsCountEl = document.getElementById("sns-count");
+  if (snsCountEl) {
+    const snsCount = allItems.filter(i => i.subscribe_and_save).length;
+    snsCountEl.textContent = snsCount > 0 ? `(${snsCount})` : "";
+  }
+
   logDiagnostics(allItems);
   refreshView();
 }
