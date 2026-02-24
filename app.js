@@ -291,7 +291,7 @@ function orderUrl(item) {
 // ---------------------------------------------------------------------------
 function effectiveStatus(item) {
   const status = deriveStatus(item.delivery_status, item.order_date);
-  if (status === "Return Started" && item.return_window_end) {
+  if ((status === "Return Started" || status === "Replacement Ordered") && item.return_window_end) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const end = new Date(item.return_window_end + "T00:00:00");
