@@ -99,7 +99,9 @@ Todo item 6 introduced visual icons for "free returns" and "non-returnable" on t
 
 ## Item 16: Harmonize Icons
 
-There are four icon-like indicators on the item cards today - subscribe & save, free returns, returns allowed, and no returns.  
+There are four icon-like indicators on the item cards today - subscribe & save, free returns, returns allowed, and no returns.  I'd like them to be visually consistent.  I like the look of the s&s icon, so let's align on that.  Let's use blue, green, yellow, and red for those indicators respectively.  No external resources - either pure HTML or inline SVG.  
+
+Before making any changes to the project itself, make a sample HTML page that shows the new indicators (on a sample item card) and let me approve them.  
 
 ---
 
