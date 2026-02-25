@@ -300,7 +300,7 @@ function statusBadgeHtml(status) {
     "Return Started":      ["badge-return-started",  "Return Started"],
     "Return in Transit":   ["badge-return-transit",  "Return in Transit"],
     "Return Complete":     ["badge-return-complete", "Return Complete"],
-    "Replacement Ordered": ["badge-replacement",     "Replacement Ordered"],
+    "Replacement Ordered": ["badge-replacement",     "Replacement"],
   };
   const [cls, label] = map[status] || ["badge-pending", status || "Unknown"];
   return `<span class="badge ${cls}">${label}</span>`;
@@ -937,6 +937,11 @@ const GRAPH_STATUSES = [
   "Cancelled",
 ];
 
+// Display labels for chart legends (where internal status name differs)
+const GRAPH_STATUS_LABELS = {
+  "Replacement Ordered": "Replacement",
+};
+
 // Colors aligned with existing badge palette in style.css
 const GRAPH_STATUS_COLORS = {
   "Ordered":             "#6b7280",   // pending gray
@@ -966,7 +971,7 @@ function buildGraphData() {
   // Datasets ordered Cancelled→Ordered so bars stack with Cancelled at bottom, Ordered at top.
   // Legend uses reverse:true to display Ordered first (left) and Cancelled last (right).
   const datasets = [...GRAPH_STATUSES].reverse().map(status => ({
-    label: status,
+    label: GRAPH_STATUS_LABELS[status] || status,
     data: years.map(y => byYear[y][status] || 0),
     backgroundColor: GRAPH_STATUS_COLORS[status],
     borderColor: GRAPH_STATUS_COLORS[status],
@@ -1007,7 +1012,7 @@ function buildMonthlyGraphData() {
 
   // Same stack order as the annual chart: Cancelled at bottom, Ordered at top.
   const datasets = [...GRAPH_STATUSES].reverse().map(status => ({
-    label: status,
+    label: GRAPH_STATUS_LABELS[status] || status,
     data: monthKeys.map(k => (byMonth[k] && byMonth[k][status]) || 0),
     backgroundColor: GRAPH_STATUS_COLORS[status],
     borderColor: GRAPH_STATUS_COLORS[status],
