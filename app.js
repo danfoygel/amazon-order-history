@@ -65,14 +65,30 @@ const STATUS_RULES = [
 
 const ASSUME_DELIVERED_AFTER_DAYS = 14;
 
-function deriveStatus(deliveryStatus, orderDate) {
+// Returns true only when the tracking URL contains a shipmentId parameter,
+// which Amazon adds once a package has been assigned to a carrier.
+function hasShipmentId(trackingUrl) {
+  if (!trackingUrl) return false;
+  try { return new URL(trackingUrl).searchParams.has("shipmentId"); }
+  catch { return false; }
+}
+
+function deriveStatus(deliveryStatus, orderDate, trackingUrl) {
   const key = (deliveryStatus || "").trim().toLowerCase();
   if (!key) {
     if (orderDate && daysSince(orderDate) > ASSUME_DELIVERED_AFTER_DAYS) return "Delivered";
     return "Ordered";
   }
   for (const [pattern, value] of STATUS_RULES) {
-    if (key.includes(pattern)) return value;
+    if (key.includes(pattern)) {
+      // "arriving" alone is ambiguous: Amazon shows "Arriving [date]" for both
+      // pre-ship estimated delivery dates AND in-transit packages.  Use the
+      // presence of shipmentId in the tracking URL as the tiebreaker.
+      if (pattern === "arriving" && value === "Shipped" && !hasShipmentId(trackingUrl)) {
+        return "Ordered";
+      }
+      return value;
+    }
   }
   if (orderDate && daysSince(orderDate) > ASSUME_DELIVERED_AFTER_DAYS) return "Delivered";
   return "Ordered";
@@ -294,7 +310,7 @@ function orderUrl(item) {
 // are treated as Delivered for display purposes)
 // ---------------------------------------------------------------------------
 function effectiveStatus(item) {
-  const status = deriveStatus(item.delivery_status, item.order_date);
+  const status = deriveStatus(item.delivery_status, item.order_date, item.tracking_url);
   if ((status === "Return Started" || status === "Replacement Ordered") && item.return_window_end) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -816,7 +832,7 @@ function logDiagnostics(items) {
   const unknownSamples  = [];  // delivery_status strings that fell through to default
 
   for (const item of items) {
-    const s = deriveStatus(item.delivery_status, item.order_date);
+    const s = deriveStatus(item.delivery_status, item.order_date, item.tracking_url);
     statusCounts[s] = (statusCounts[s] || 0) + 1;
 
     if (item.delivery_status) {
