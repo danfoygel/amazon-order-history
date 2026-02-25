@@ -115,22 +115,20 @@ Amazon shows `"Arriving [date]"` for both pre-ship estimated delivery dates and 
 
 ---
 
-## Item 19: Ordered Section
+## Item 19: Ordered Section ✅ (merged PR #32)
 
-Modify the "combined" view to show "ordered" items as a separate section - below "shipped" and above the month-based sections.
-
----
-
-## Item 20: Date Formatting
-
-Dates that are known to be close to today - "mail back by", "return by", "arrives" - don't need to show the year.  Other dates that could be quite old - like "ordered" - should continue to show the year.
-
-Also, use "yesterday", "today", and "tomorrow" when it applies.  So "Arrives Feb 25, 2026" should be "Arrives today", and "Return by Feb 26, 2026 (1d left)" should be "Return by tomorrow"
+Added "Ordered" as a dedicated section in the combined view, placed after "Shipped" and before the month-based sections, sorted by expected delivery date. Ordered items are excluded from the monthly groupings.
 
 ---
 
-## Item 21: Collapse
+## Item 20: Date Formatting ✅ (merged PR #32)
 
-In the combined view, make each section collapsible - but expanded by default on load.
+Nearby dates (arrives, return by, mail back by) now omit the year and use "yesterday", "today", or "tomorrow" when applicable (e.g., "Arrives today", "Return by tomorrow"). The redundant "(Xd left)" suffix is suppressed for today/tomorrow/yesterday. The "Ordered" date on cards continues to show the full year.
+
+---
+
+## Item 21: Collapse ✅ (merged PR #32)
+
+All sections in the combined view are now collapsible via a chevron toggle (▾/▸) on the section heading. Sections are expanded by default on page load.
 
 ---

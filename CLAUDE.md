@@ -14,6 +14,10 @@ For UI changes: use `preview_start` to run the dev server, then use preview tool
 (snapshot, screenshot, inspect, click) to verify changes visually before reporting
 done. Never ask the user to check manually.
 
+## PR approval workflow
+
+When the user says "LGTM" in chat: update TODO.md to show a short summary of the completed task (consistent with the style of other completed items), then merge the open PR.
+
 ## Local edits to markdown files
 
 The user edits CLAUDE.md, TODO.md, and NOTES.md periodically. It's fine to leave it uncommitted on disk. When creating the next PR for any other reason, check if any of those have local uncommitted changes and bundle them into that PR branch before merging.
