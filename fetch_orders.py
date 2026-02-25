@@ -324,6 +324,74 @@ def fetch_product_page_info(
     return None, last_reason  # unreachable, but satisfies the type checker
 
 
+class _AsinFetchProgress:
+    """
+    Lightweight progress display for the sequential ASIN product-page fetch loop.
+
+    Unlike FetchProgress (which hooks into async library internals to learn the
+    total count and receive per-order callbacks), product page fetching is a
+    simple sequential loop — so all we need is a background timer and an
+    on_done() call after each ASIN attempt.
+
+    Non-verbose mode: a single \\r line showing N/total (pct%) [elapsed],
+    updated after each ASIN and once per second by the timer thread.
+    Verbose mode: no \\r tricks; each ASIN is already logged by the caller.
+    """
+
+    def __init__(self, total: int, verbose: bool = False):
+        self._total = total
+        self._verbose = verbose
+        self._processed = 0          # ASINs attempted so far (success or failure)
+        self._lock = threading.Lock()
+        self._t0 = time.monotonic()
+        self._stop_event = threading.Event()
+        if not verbose:
+            self._timer: "threading.Thread | None" = threading.Thread(
+                target=self._tick, daemon=True
+            )
+            self._timer.start()
+        else:
+            self._timer = None
+
+    def _elapsed(self) -> str:
+        secs = int(time.monotonic() - self._t0)
+        return f"{secs // 60}:{secs % 60:02d}"
+
+    def _format_line(self) -> str:
+        with self._lock:
+            processed = self._processed
+        pct = processed / self._total * 100 if self._total else 0
+        return f"  product pages: {processed}/{self._total} ({pct:.0f}%)  [{self._elapsed()}]"
+
+    def _redraw(self):
+        sys.stdout.write(f"\r{self._format_line():<72}")
+        sys.stdout.flush()
+
+    def _tick(self):
+        while not self._stop_event.wait(timeout=1):
+            self._redraw()
+
+    def on_done(self):
+        """Call after each ASIN attempt completes (success or failure)."""
+        with self._lock:
+            self._processed += 1
+        if not self._verbose:
+            self._redraw()
+
+    def finish(self, fetched: int, failures: "list[tuple[str, str]]") -> None:
+        """Stop the timer and write the final summary line + per-ASIN warnings."""
+        self._stop_event.set()
+        if self._timer:
+            self._timer.join(timeout=2)
+        elapsed = self._elapsed()
+        if not self._verbose:
+            final = f"  product pages: {fetched}/{self._total}  [{elapsed}]"
+            sys.stdout.write(f"\r{final:<72}\n")
+            sys.stdout.flush()
+            for asin, reason in failures:
+                print(f"    Warning: [{asin}] {reason}")
+
+
 def enrich_items_with_asin_cache(
     items: list,
     session,
@@ -355,11 +423,9 @@ def enrich_items_with_asin_cache(
         print(f"Fetching product pages for {len(uncached)} new ASIN(s)…")
         fetched = 0
         failures: list[tuple[str, str]] = []  # (asin, reason)
+        progress = _AsinFetchProgress(len(uncached), verbose=verbose)
         for i, asin in enumerate(uncached, 1):
-            if not verbose:
-                sys.stdout.write(f"\r  {i}/{len(uncached)}: {asin:<12}  ")
-                sys.stdout.flush()
-            else:
+            if verbose:
                 print(f"  [{i}/{len(uncached)}] {asin}")
             info, err = fetch_product_page_info(session, asin, verbose=verbose)
             if info is not None:
@@ -368,15 +434,10 @@ def enrich_items_with_asin_cache(
                 fetched += 1
             else:
                 failures.append((asin, err or "unknown error"))
+            progress.on_done()
             time.sleep(1.0)  # polite pacing between requests
 
-        if not verbose:
-            sys.stdout.write(
-                f"\r  Done. {fetched}/{len(uncached)} pages fetched.{' ' * 20}\n"
-            )
-            sys.stdout.flush()
-            for asin, reason in failures:
-                print(f"    Warning: [{asin}] {reason}")
+        progress.finish(fetched, failures)
         save_asin_cache(cache)
         if verbose:
             print(f"  ASIN cache: {len(cache)} total entries after update.")
