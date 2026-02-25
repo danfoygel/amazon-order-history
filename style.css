@@ -144,6 +144,39 @@ header h1 {
 }
 .section-heading:first-child { padding-top: 4px; }
 
+/* ── Collapsible sections ── */
+.section-group {
+  grid-column: 1 / -1;
+}
+.section-group .section-heading {
+  padding-top: 12px;
+}
+.section-group:first-child .section-heading {
+  padding-top: 4px;
+}
+.section-heading-toggle {
+  cursor: pointer;
+  user-select: none;
+}
+.section-heading-toggle:hover {
+  color: var(--text);
+}
+.section-chevron {
+  display: inline-block;
+  font-size: 11px;
+  width: 12px;
+  text-align: center;
+}
+.section-items {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 10px;
+  padding-top: 10px;
+}
+.section-group.collapsed .section-items {
+  display: none;
+}
+
 /* ── Item card ── */
 .item-card {
   background: var(--bg-card);
