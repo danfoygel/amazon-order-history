@@ -97,11 +97,9 @@ Added an amber corner-return arrow icon for items with `return_policy = "return_
 
 --- 
 
-## Item 16: Harmonize Icons
+## Item 16: Harmonize Icons ✅ (merged PR #26)
 
-There are four icon-like indicators on the item cards today - subscribe & save, free returns, returns allowed, and no returns.  I'd like them to be visually consistent.  I like the look of the s&s icon, so let's align on that.  Let's use blue, green, yellow, and red for those indicators respectively.  No external resources - either pure HTML or inline SVG.  
-
-Before making any changes to the project itself, make a sample HTML page that shows the new indicators (on a sample item card) and give me a way to view it so I can approve them.  
+Replaced the four disparate item card indicators with a unified pill-badge style. All use inline SVG icons in colored pills: S&S = blue clock, free returns = green circular arrow, returns allowed = yellow corner arrow, non-returnable = red circle-slash. Also updated the S&S filter label icon to match.
 
 ---
 
