@@ -241,47 +241,159 @@ _PRODUCT_PAGE_HEADERS = {
 }
 
 
-def fetch_product_page_info(session, asin: str, verbose: bool = False) -> "dict | None":
+def fetch_product_page_info(
+    session, asin: str, verbose: bool = False, max_retries: int = 3
+) -> "tuple[dict | None, str | None]":
     """GET the product detail page for one ASIN and extract cacheable fields.
 
     Returns:
-        dict  — successful fetch; individual field values may be None if the
-                signal wasn't found on the page.
-        None  — network / HTTP error; caller should not cache this result.
+        (dict, None)   — successful fetch; individual field values may be None
+                         if the signal wasn't found on the page.
+        (None, str)    — failure; str describes the reason (HTTP status, exception
+                         message, etc.).  Caller should not cache this result.
+
+    Retries up to max_retries times with exponential backoff (1 s, 2 s, 4 s …)
+    on transient errors (5xx, 429, network exceptions).  Permanent failures
+    (404, 403, etc.) are returned immediately without retrying.
 
     Currently extracted fields:
         return_policy  "free_or_replace" | "non_returnable" | None
     """
     if _BeautifulSoup is None:
+        reason = "bs4 not installed — cannot fetch product page"
         if verbose:
-            print(f"    [{asin}] bs4 not installed — cannot fetch product page")
-        return None
+            print(f"    [{asin}] {reason}")
+        return None, reason
+
+    # HTTP status codes worth retrying (transient server-side errors).
+    RETRYABLE_STATUSES = {429, 500, 502, 503, 504}
+
     url = f"https://www.amazon.com/dp/{asin}"
-    try:
-        resp = session.session.get(url, headers=_PRODUCT_PAGE_HEADERS, timeout=15)
-        if resp.status_code != 200:
+    last_reason: str = "unknown error"
+    for attempt in range(1, max_retries + 1):
+        try:
+            resp = session.session.get(url, headers=_PRODUCT_PAGE_HEADERS, timeout=15)
+            if resp.status_code != 200:
+                last_reason = f"HTTP {resp.status_code}"
+                if resp.status_code not in RETRYABLE_STATUSES or attempt == max_retries:
+                    if verbose:
+                        suffix = (
+                            f" after {max_retries} attempts"
+                            if attempt == max_retries and resp.status_code in RETRYABLE_STATUSES
+                            else ""
+                        )
+                        print(f"    [{asin}] {last_reason}{suffix}")
+                    return None, last_reason
+                wait = 2 ** (attempt - 1)
+                if verbose:
+                    print(
+                        f"    [{asin}] {last_reason} — retrying in {wait}s"
+                        f" (attempt {attempt}/{max_retries})…"
+                    )
+                time.sleep(wait)
+                continue
+            # 200 OK — parse the page
+            soup = _BeautifulSoup(resp.text, "html.parser")
+            # Strip customer-review sections to avoid false positives from review text
+            for el in soup.select("#customerReviews, #reviews-medley, #cr-medley"):
+                el.decompose()
+            text = soup.get_text(" ", strip=True).lower()
+            result: dict = {}
+            if "non-returnable" in text:
+                result["return_policy"] = "non_returnable"
+            elif "free returns" in text:
+                result["return_policy"] = "free_or_replace"
+            else:
+                result["return_policy"] = None  # page loaded but no clear signal
             if verbose:
-                print(f"    [{asin}] HTTP {resp.status_code}")
-            return None
-        soup = _BeautifulSoup(resp.text, "html.parser")
-        # Strip customer-review sections to avoid false positives from review text
-        for el in soup.select("#customerReviews, #reviews-medley, #cr-medley"):
-            el.decompose()
-        text = soup.get_text(" ", strip=True).lower()
-        result: dict = {}
-        if "non-returnable" in text:
-            result["return_policy"] = "non_returnable"
-        elif "free returns" in text:
-            result["return_policy"] = "free_or_replace"
+                print(f"    [{asin}] return_policy = {result['return_policy']!r}")
+            return result, None
+        except Exception as exc:
+            last_reason = str(exc)
+            if attempt == max_retries:
+                if verbose:
+                    print(f"    [{asin}] error: {last_reason} after {max_retries} attempts")
+                return None, last_reason
+            wait = 2 ** (attempt - 1)
+            if verbose:
+                print(
+                    f"    [{asin}] error: {last_reason} — retrying in {wait}s"
+                    f" (attempt {attempt}/{max_retries})…"
+                )
+            time.sleep(wait)
+    return None, last_reason  # unreachable, but satisfies the type checker
+
+
+class _AsinFetchProgress:
+    """
+    Lightweight progress display for the sequential ASIN product-page fetch loop.
+
+    Unlike FetchProgress (which hooks into async library internals to learn the
+    total count and receive per-order callbacks), product page fetching is a
+    simple sequential loop — so all we need is a background timer and an
+    on_done() call after each ASIN attempt.
+
+    Non-verbose mode: a single \\r line showing N/total (pct%) [elapsed],
+    updated after each ASIN and once per second by the timer thread.
+    Verbose mode: no \\r tricks; each ASIN is already logged by the caller.
+    """
+
+    def __init__(self, total: int, verbose: bool = False):
+        self._total = total
+        self._verbose = verbose
+        self._processed = 0          # ASINs attempted so far (success or failure)
+        self._lock = threading.Lock()
+        self._t0 = time.monotonic()
+        self._stop_event = threading.Event()
+        if not verbose:
+            self._timer: "threading.Thread | None" = threading.Thread(
+                target=self._tick, daemon=True
+            )
+            self._timer.start()
         else:
-            result["return_policy"] = None  # page loaded but no clear signal
-        if verbose:
-            print(f"    [{asin}] return_policy = {result['return_policy']!r}")
-        return result
-    except Exception as exc:
-        if verbose:
-            print(f"    [{asin}] error: {exc}")
-        return None
+            self._timer = None
+
+    def _elapsed(self) -> str:
+        secs = int(time.monotonic() - self._t0)
+        return f"{secs // 60}:{secs % 60:02d}"
+
+    def _format_line(self) -> str:
+        with self._lock:
+            processed = self._processed
+        pct = processed / self._total * 100 if self._total else 0
+        return f"  product pages: {processed}/{self._total} ({pct:.0f}%)  [{self._elapsed()}]"
+
+    def _redraw(self):
+        sys.stdout.write(f"\r{self._format_line():<72}")
+        sys.stdout.flush()
+
+    def _tick(self):
+        while not self._stop_event.wait(timeout=1):
+            self._redraw()
+
+    def on_done(self):
+        """Call after each ASIN attempt completes (success or failure)."""
+        with self._lock:
+            self._processed += 1
+        if not self._verbose:
+            self._redraw()
+
+    def finish(self, fetched: int, failures: "list[tuple[str, str]]") -> None:
+        """Stop the timer and write the final summary line + per-ASIN warnings."""
+        self._stop_event.set()
+        if self._timer:
+            self._timer.join(timeout=2)
+        elapsed = self._elapsed()
+        if not self._verbose:
+            final = f"  product pages: {fetched}/{self._total}  [{elapsed}]"
+            sys.stdout.write(f"\r{final:<72}\n")
+            sys.stdout.flush()
+            not_found = [asin for asin, reason in failures if reason == "HTTP 404"]
+            other = [(asin, reason) for asin, reason in failures if reason != "HTTP 404"]
+            for asin, reason in other:
+                print(f"    Warning: [{asin}] {reason}")
+            if not_found:
+                print(f"    ({len(not_found)} ASIN(s) returned 404 — likely discontinued or delisted)")
 
 
 def enrich_items_with_asin_cache(
@@ -314,24 +426,22 @@ def enrich_items_with_asin_cache(
     if uncached:
         print(f"Fetching product pages for {len(uncached)} new ASIN(s)…")
         fetched = 0
+        failures: list[tuple[str, str]] = []  # (asin, reason)
+        progress = _AsinFetchProgress(len(uncached), verbose=verbose)
         for i, asin in enumerate(uncached, 1):
-            if not verbose:
-                sys.stdout.write(f"\r  {i}/{len(uncached)}: {asin:<12}  ")
-                sys.stdout.flush()
-            else:
+            if verbose:
                 print(f"  [{i}/{len(uncached)}] {asin}")
-            info = fetch_product_page_info(session, asin, verbose=verbose)
+            info, err = fetch_product_page_info(session, asin, verbose=verbose)
             if info is not None:
                 info["_fetched_at"] = datetime.datetime.now(datetime.UTC).isoformat()
                 cache[asin] = info
                 fetched += 1
+            else:
+                failures.append((asin, err or "unknown error"))
+            progress.on_done()
             time.sleep(1.0)  # polite pacing between requests
 
-        if not verbose:
-            sys.stdout.write(
-                f"\r  Done. {fetched}/{len(uncached)} pages fetched.{' ' * 20}\n"
-            )
-            sys.stdout.flush()
+        progress.finish(fetched, failures)
         save_asin_cache(cache)
         if verbose:
             print(f"  ASIN cache: {len(cache)} total entries after update.")
@@ -463,7 +573,7 @@ def write_manifest() -> None:
         [int(os.path.basename(f)[9:13]) for f in files],
         reverse=True,  # newest first
     )
-    counts = {year: len(read_existing_output(year)) for year in years}
+    counts = {year: len(load_existing_items(year)) for year in years}
     os.makedirs("data", exist_ok=True)
     with open("data/app_data_manifest.js", "w", encoding="utf-8") as f:
         f.write(f"window.ORDER_DATA_MANIFEST = {json.dumps(years)};\n")
