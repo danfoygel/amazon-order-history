@@ -91,3 +91,15 @@ Add a new special view, with a button to the right of "Decide", that is "Quantit
 
 ---
 
+## Item 15: Enhance return information
+
+Todo item 6 introduced visual icons for "free returns" and "non-returnable" on the item cards.  Add a third visual icon for the "return_only" status - use mouseover text "Returns allowed".
+
+--- 
+
+## Item 16: Harmonize Icons
+
+There are four icon-like indicators on the item cards today - subscribe & save, free returns, returns allowed, and no returns.  
+
+---
+
