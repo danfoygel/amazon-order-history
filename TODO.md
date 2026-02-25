@@ -132,3 +132,9 @@ Nearby dates (arrives, return by, mail back by) now omit the year and use "yeste
 All sections in the combined view are now collapsible via a chevron toggle (▾/▸) on the section heading. Sections are expanded by default on page load.
 
 ---
+
+## Item 22: Shorten "Replacement Ordered" to "Replacement" ✅
+
+Shortened the display label from "Replacement Ordered" to "Replacement" across the status badge, filter tab, and chart legends to reduce card overflow at narrower viewports. Internal status logic unchanged.
+
+---
