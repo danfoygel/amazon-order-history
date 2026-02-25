@@ -109,3 +109,28 @@ When an item transitions to "Return Started", Amazon stops showing the return el
 
 ---
 
+## Item 18: Fix Ordered/Shipped misclassification ✅ (merged PR #29)
+
+Amazon shows `"Arriving [date]"` for both pre-ship estimated delivery dates and in-transit packages, so the `"arriving" → Shipped` rule in `STATUS_RULES` was incorrectly classifying unshipped orders as Shipped. Fixed by adding a `hasShipmentId()` helper in `app.js` that checks for the `shipmentId` parameter in the tracking URL — Amazon only adds this once a package has been assigned to a carrier — and using it as a tiebreaker in `deriveStatus()`: `"arriving"` without a `shipmentId` maps to Ordered, with one maps to Shipped. No re-fetch needed.
+
+---
+
+## Item 19: Ordered Section
+
+Modify the "combined" view to show "ordered" items as a separate section - below "shipped" and above the month-based sections.
+
+---
+
+## Item 20: Date Formatting
+
+Dates that are known to be close to today - "mail back by", "return by", "arrives" - don't need to show the year.  Other dates that could be quite old - like "ordered" - should continue to show the year.
+
+Also, use "yesterday", "today", and "tomorrow" when it applies.  So "Arrives Feb 25, 2026" should be "Arrives today", and "Return by Feb 26, 2026 (1d left)" should be "Return by tomorrow"
+
+---
+
+## Item 21: Collapse
+
+In the combined view, make each section collapsible - but expanded by default on load.
+
+---
