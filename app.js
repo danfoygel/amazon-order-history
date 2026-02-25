@@ -272,6 +272,20 @@ function formatDate(isoStr) {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
+/** Format a date that's expected to be near today — omit the year and use
+ *  "yesterday" / "today" / "tomorrow" when applicable.  Used for arrival
+ *  estimates, return-by dates, and mail-back deadlines. */
+function formatDateNearby(isoStr) {
+  if (!isoStr) return "—";
+  const d = new Date(isoStr + "T00:00:00");
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const diffDays = Math.round((d - today) / 86400000);
+  if (diffDays === -1) return "yesterday";
+  if (diffDays === 0)  return "today";
+  if (diffDays === 1)  return "tomorrow";
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
 function formatPrice(val) {
   if (val === null || val === undefined) return "—";
   return "$" + Number(val).toFixed(2);
@@ -338,9 +352,9 @@ function returnWindowHtml(item) {
       return `<span class="badge return-badge-closed">Return window closed</span>`;
     }
     if (daysLeft <= 7) {
-      return `<span class="badge return-badge-warn">⚠ Return by ${formatDate(item.return_window_end)} (${daysLeft}d left)</span>`;
+      return `<span class="badge return-badge-warn">⚠ Return by ${formatDateNearby(item.return_window_end)} (${daysLeft}d left)</span>`;
     }
-    return `<span class="badge return-badge-ok">Return by ${formatDate(item.return_window_end)}</span>`;
+    return `<span class="badge return-badge-ok">Return by ${formatDateNearby(item.return_window_end)}</span>`;
   }
 
   if (status === "Return Started" || status === "Replacement Ordered") {
@@ -348,12 +362,12 @@ function returnWindowHtml(item) {
     const end = new Date(item.return_window_end + "T00:00:00");
     const daysLeft = Math.ceil((end - today) / (1000 * 60 * 60 * 24));
     if (daysLeft < 0) {
-      return `<span class="badge return-badge-overdue">Mail back by ${formatDate(item.return_window_end)}</span>`;
+      return `<span class="badge return-badge-overdue">Mail back by ${formatDateNearby(item.return_window_end)}</span>`;
     }
     if (daysLeft <= 7) {
-      return `<span class="badge return-badge-warn">⚠ Mail back by ${formatDate(item.return_window_end)} (${daysLeft}d left)</span>`;
+      return `<span class="badge return-badge-warn">⚠ Mail back by ${formatDateNearby(item.return_window_end)} (${daysLeft}d left)</span>`;
     }
-    return `<span class="badge return-badge-ok">Mail back by ${formatDate(item.return_window_end)}</span>`;
+    return `<span class="badge return-badge-ok">Mail back by ${formatDateNearby(item.return_window_end)}</span>`;
   }
 
   return "";
@@ -424,7 +438,7 @@ function renderCard(item) {
     : null;
   const etaLabel = itemStatus === "Ordered" ? "Expected" : "Arrives";
   const expectedDeliveryHtml = expectedDelivery
-    ? `<span class="delivery-eta">${etaLabel} ${formatDate(expectedDelivery)}</span>`
+    ? `<span class="delivery-eta">${etaLabel} ${formatDateNearby(expectedDelivery)}</span>`
     : "";
 
   const article = document.createElement("article");
@@ -486,6 +500,29 @@ function renderSectionHeading(label, count) {
   return h;
 }
 
+/** Wrap a section heading + items in a collapsible group (expanded by default). */
+function renderCollapsibleSection(label, items) {
+  const group = document.createElement("div");
+  group.className = "section-group";
+
+  const heading = document.createElement("h2");
+  heading.className = "section-heading section-heading-toggle";
+  heading.innerHTML = `<span class="section-chevron">&#x25BE;</span> ${escHtml(label)} (${items.length})`;
+
+  const itemsWrap = document.createElement("div");
+  itemsWrap.className = "section-items";
+  for (const item of items) itemsWrap.appendChild(renderCard(item));
+
+  heading.addEventListener("click", () => {
+    const collapsed = group.classList.toggle("collapsed");
+    heading.querySelector(".section-chevron").innerHTML = collapsed ? "&#x25B8;" : "&#x25BE;";
+  });
+
+  group.appendChild(heading);
+  group.appendChild(itemsWrap);
+  return group;
+}
+
 function renderList(items) {
   const container = document.getElementById("item-list");
   container.innerHTML = "";
@@ -526,11 +563,16 @@ function renderCombined(allFiltered) {
     allFiltered.filter(i => effectiveStatus(i) === "Shipped"),
     "expected_delivery_asc"
   );
+  const ordered = sortItems(
+    allFiltered.filter(i => effectiveStatus(i) === "Ordered"),
+    "expected_delivery_asc"
+  );
   const restItems = sortItems(
     allFiltered.filter(i => {
       const s = effectiveStatus(i);
       if ((s === "Return Started" || s === "Replacement Ordered") && !isKept(i)) return false;
       if (s === "Shipped") return false;
+      if (s === "Ordered") return false;
       if (s === "Delivered" && !isKept(i) && i.return_window_end && new Date(i.return_window_end + "T00:00:00") >= today) return false;
       return true;
     }),
@@ -561,18 +603,17 @@ function renderCombined(allFiltered) {
     { label: "Mail Back", items: mailBack },
     { label: "Decide",    items: decide   },
     { label: "Shipped",   items: shipped  },
+    { label: "Ordered",   items: ordered  },
   ];
 
   for (const { label, items } of fixedSections) {
     if (items.length === 0) continue;
-    fragment.appendChild(renderSectionHeading(label, items.length));
-    for (const item of items) fragment.appendChild(renderCard(item));
+    fragment.appendChild(renderCollapsibleSection(label, items));
   }
 
   for (const { label, items } of monthSections) {
     if (items.length === 0) continue;
-    fragment.appendChild(renderSectionHeading(label, items.length));
-    for (const item of items) fragment.appendChild(renderCard(item));
+    fragment.appendChild(renderCollapsibleSection(label, items));
   }
 
   container.appendChild(fragment);
