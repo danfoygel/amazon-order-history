@@ -4,3 +4,9 @@ Answers provided in TODO.md. Proceed with the implementation. Use chrome to veri
 
 Looks good - update TODO to show a short summary of the completed task and merge the PR.
 
+Update the main working directory (not the worktree for this session) with the latest changes from main.
+
+
+
+
+

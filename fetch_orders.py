@@ -241,28 +241,31 @@ _PRODUCT_PAGE_HEADERS = {
 }
 
 
-def fetch_product_page_info(session, asin: str, verbose: bool = False) -> "dict | None":
+def fetch_product_page_info(session, asin: str, verbose: bool = False) -> "tuple[dict | None, str | None]":
     """GET the product detail page for one ASIN and extract cacheable fields.
 
     Returns:
-        dict  — successful fetch; individual field values may be None if the
-                signal wasn't found on the page.
-        None  — network / HTTP error; caller should not cache this result.
+        (dict, None)   — successful fetch; individual field values may be None
+                         if the signal wasn't found on the page.
+        (None, str)    — failure; str describes the reason (HTTP status, exception
+                         message, etc.).  Caller should not cache this result.
 
     Currently extracted fields:
         return_policy  "free_or_replace" | "non_returnable" | None
     """
     if _BeautifulSoup is None:
+        reason = "bs4 not installed — cannot fetch product page"
         if verbose:
-            print(f"    [{asin}] bs4 not installed — cannot fetch product page")
-        return None
+            print(f"    [{asin}] {reason}")
+        return None, reason
     url = f"https://www.amazon.com/dp/{asin}"
     try:
         resp = session.session.get(url, headers=_PRODUCT_PAGE_HEADERS, timeout=15)
         if resp.status_code != 200:
+            reason = f"HTTP {resp.status_code}"
             if verbose:
-                print(f"    [{asin}] HTTP {resp.status_code}")
-            return None
+                print(f"    [{asin}] {reason}")
+            return None, reason
         soup = _BeautifulSoup(resp.text, "html.parser")
         # Strip customer-review sections to avoid false positives from review text
         for el in soup.select("#customerReviews, #reviews-medley, #cr-medley"):
@@ -277,11 +280,12 @@ def fetch_product_page_info(session, asin: str, verbose: bool = False) -> "dict 
             result["return_policy"] = None  # page loaded but no clear signal
         if verbose:
             print(f"    [{asin}] return_policy = {result['return_policy']!r}")
-        return result
+        return result, None
     except Exception as exc:
+        reason = str(exc)
         if verbose:
-            print(f"    [{asin}] error: {exc}")
-        return None
+            print(f"    [{asin}] error: {reason}")
+        return None, reason
 
 
 def enrich_items_with_asin_cache(
@@ -314,17 +318,20 @@ def enrich_items_with_asin_cache(
     if uncached:
         print(f"Fetching product pages for {len(uncached)} new ASIN(s)…")
         fetched = 0
+        failures: list[tuple[str, str]] = []  # (asin, reason)
         for i, asin in enumerate(uncached, 1):
             if not verbose:
                 sys.stdout.write(f"\r  {i}/{len(uncached)}: {asin:<12}  ")
                 sys.stdout.flush()
             else:
                 print(f"  [{i}/{len(uncached)}] {asin}")
-            info = fetch_product_page_info(session, asin, verbose=verbose)
+            info, err = fetch_product_page_info(session, asin, verbose=verbose)
             if info is not None:
                 info["_fetched_at"] = datetime.datetime.now(datetime.UTC).isoformat()
                 cache[asin] = info
                 fetched += 1
+            else:
+                failures.append((asin, err or "unknown error"))
             time.sleep(1.0)  # polite pacing between requests
 
         if not verbose:
@@ -332,6 +339,8 @@ def enrich_items_with_asin_cache(
                 f"\r  Done. {fetched}/{len(uncached)} pages fetched.{' ' * 20}\n"
             )
             sys.stdout.flush()
+            for asin, reason in failures:
+                print(f"    Warning: [{asin}] {reason}")
         save_asin_cache(cache)
         if verbose:
             print(f"  ASIN cache: {len(cache)} total entries after update.")
@@ -463,7 +472,7 @@ def write_manifest() -> None:
         [int(os.path.basename(f)[9:13]) for f in files],
         reverse=True,  # newest first
     )
-    counts = {year: len(read_existing_output(year)) for year in years}
+    counts = {year: len(load_existing_items(year)) for year in years}
     os.makedirs("data", exist_ok=True)
     with open("data/app_data_manifest.js", "w", encoding="utf-8") as f:
         f.write(f"window.ORDER_DATA_MANIFEST = {json.dumps(years)};\n")

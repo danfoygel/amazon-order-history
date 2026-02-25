@@ -12,6 +12,6 @@ For UI changes: use `preview_start` to run the dev server, then use preview tool
 (snapshot, screenshot, inspect, click) to verify changes visually before reporting
 done. Never ask the user to check manually.
 
-## TODO.md
+## Local edits to markdown files
 
-The user edits TODO.md periodically. It's fine to leave it uncommitted on disk. When creating the next PR for any other reason, check if TODO.md has local uncommitted changes and bundle them into that PR branch before merging.
+The user edits CLAUDE.md, TODO.md, and NOTES.md periodically. It's fine to leave it uncommitted on disk. When creating the next PR for any other reason, check if any of those have local uncommitted changes and bundle them into that PR branch before merging.
