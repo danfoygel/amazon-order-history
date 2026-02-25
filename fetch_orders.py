@@ -388,8 +388,12 @@ class _AsinFetchProgress:
             final = f"  product pages: {fetched}/{self._total}  [{elapsed}]"
             sys.stdout.write(f"\r{final:<72}\n")
             sys.stdout.flush()
-            for asin, reason in failures:
+            not_found = [asin for asin, reason in failures if reason == "HTTP 404"]
+            other = [(asin, reason) for asin, reason in failures if reason != "HTTP 404"]
+            for asin, reason in other:
                 print(f"    Warning: [{asin}] {reason}")
+            if not_found:
+                print(f"    ({len(not_found)} ASIN(s) returned 404 — likely discontinued or delisted)")
 
 
 def enrich_items_with_asin_cache(
