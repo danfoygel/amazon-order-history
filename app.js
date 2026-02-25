@@ -356,7 +356,11 @@ function returnPolicyIcon(item) {
     // Circle with diagonal slash — non-returnable
     return `<svg class="return-policy-icon return-nonreturnable-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Non-returnable"><title>Non-returnable</title><circle cx="12" cy="12" r="10"></circle><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line></svg>`;
   }
-  // return_only or null/missing: no icon shown
+  if (policy === "return_only") {
+    // Corner-return arrow — returns allowed (but not free)
+    return `<svg class="return-policy-icon return-only-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Returns allowed"><title>Returns allowed</title><polyline points="9 14 4 9 9 4"></polyline><path d="M20 20v-7a4 4 0 0 0-4-4H4"></path></svg>`;
+  }
+  // null/missing: no icon shown
   return "";
 }
 

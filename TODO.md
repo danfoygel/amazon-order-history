@@ -91,9 +91,9 @@ Add a new special view, with a button to the right of "Decide", that is "Quantit
 
 ---
 
-## Item 15: Enhance return information
+## Item 15: Enhance return information ✅ (merged PR #25)
 
-Todo item 6 introduced visual icons for "free returns" and "non-returnable" on the item cards.  Add a third visual icon for the "return_only" status - use mouseover text "Returns allowed".
+Added an amber corner-return arrow icon for items with `return_policy = "return_only"`, with mouseover text "Returns allowed". Styled via new `.return-only-icon` CSS class (`#d97706` amber-600).
 
 --- 
 
