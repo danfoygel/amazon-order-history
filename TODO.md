@@ -103,9 +103,9 @@ Replaced the four disparate item card indicators with a unified pill-badge style
 
 ---
 
-## Item 17: Mail back dates
+## Item 17: Mail back dates ✅ (merged PR #30)
 
-The "mail back" section used to show a mail back date for each item card - but now it's gone.  Figure out why it broke and fix it.
+When an item transitions to "Return Started", Amazon stops showing the return eligibility date, so incremental re-fetches overwrote previously-captured `return_window_end` values with `null`. Fixed by adding `_preserve_return_window()` in `fetch_orders.py` — during merge (incremental and `--year` modes), any item whose freshly-fetched `return_window_end` is null gets its date restored from the on-disk record. In `app.js`, null-date Mail Back items now show a `⚠ Mail back — deadline unknown` amber badge instead of nothing. Previously-broken items were backfilled manually by inspecting the Amazon returns page.
 
----  
+---
 
