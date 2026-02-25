@@ -214,7 +214,7 @@ header h1 {
 .badge-return-transit    { background: #cffafe; color: var(--color-return-active); }
 .badge-return-complete   { background: #f3f4f6; color: var(--color-pending); }
 .badge-replacement       { background: #ede9fe; color: #6d28d9; }
-.badge-sns               { background: #d1fae5; color: #065f46; }
+.badge-sns               { background: #dbeafe; color: #1d4ed8; }
 
 /* ── Return window badges (Delivered items) ── */
 .return-badge-ok       { background: #f3f4f6; color: var(--color-pending); }
@@ -222,17 +222,24 @@ header h1 {
 .return-badge-overdue  { background: #fee2e2; color: var(--color-cancelled); }
 .return-badge-closed   { background: #f3f4f6; color: var(--color-pending); text-decoration: line-through; opacity: 0.7; }
 
-/* ── Return policy icons ── */
-.return-policy-icon {
-  display: inline-block;
-  vertical-align: middle;
-  flex-shrink: 0;
+/* ── Icon badges (S&S + return policy) ── */
+.icon-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 6px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
   cursor: default;
-  opacity: 0.85;
+  line-height: 1;
+  flex-shrink: 0;
 }
-.return-free-icon           { color: #16a34a; } /* green-600  */
-.return-nonreturnable-icon  { color: #dc2626; } /* red-600    */
-.return-only-icon           { color: #d97706; } /* amber-600  */
+.icon-badge svg { display: block; flex-shrink: 0; }
+.badge-free-returns { background: #dcfce7; color: #15803d; } /* green  */
+.badge-return-only  { background: #fef9c3; color: #854d0e; } /* yellow */
+.badge-no-return    { background: #fee2e2; color: #b91c1c; } /* red    */
 
 /* ── Keep button ── */
 .keep-btn {

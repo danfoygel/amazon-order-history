@@ -6,6 +6,8 @@ For all code changes: create a PR and ask the user to review and approve before 
 
 Branch protection is enabled on main — direct pushes are rejected. All changes must go through a PR.
 
+After merging a PR, delete the source branch if it is completely safe to do so (i.e. all commits are accounted for on main, whether via regular or squash merge). Do this automatically without asking.
+
 ## Visual Verification
 
 For UI changes: use `preview_start` to run the dev server, then use preview tools
