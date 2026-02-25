@@ -328,7 +328,7 @@ function returnWindowHtml(item) {
   }
 
   if (status === "Return Started" || status === "Replacement Ordered") {
-    if (!item.return_window_end) return "";
+    if (!item.return_window_end) return `<span class="badge return-badge-warn">⚠ Mail back — deadline unknown</span>`;
     const end = new Date(item.return_window_end + "T00:00:00");
     const daysLeft = Math.ceil((end - today) / (1000 * 60 * 60 * 24));
     if (daysLeft < 0) {

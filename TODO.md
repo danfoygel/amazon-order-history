@@ -128,6 +128,8 @@ The incremental fetch (`fetch_orders.py` default mode) re-fetches all orders wit
 
 In both incremental and `--year` modes, after fetching fresh items and enriching them, before writing to disk: for each fresh item where `return_window_end is None` and `return_policy != "non_returnable"`, check whether the existing on-disk record for the same `item_id` had a non-null `return_window_end`, and if so, restore it.
 
+Note: Apply this logic irrespective of the return_policy.
+
 _Rationale:_ Once a real date is captured from Amazon while the item is Delivered, it should be treated as sticky — a subsequent re-fetch that can no longer see the date (because the return started) should not overwrite it. The `non_returnable` guard prevents restoring a date for items where the product page confirmed no return window exists.
 
 Specifically:

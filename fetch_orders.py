@@ -551,6 +551,21 @@ def load_existing_items(year: int) -> list[dict]:
         return []
 
 
+def _preserve_return_window(fresh_items: list[dict], existing_by_id: dict[str, dict]) -> None:
+    """Restore return_window_end from existing records where fresh re-fetch lost it.
+
+    When an item transitions to "Return Started" the Amazon order page no longer
+    shows the return-eligibility date, so extract_return_info() returns None.  If
+    we already captured a real date while the item was in Delivered status, we
+    should keep it rather than overwriting with None.
+    """
+    for item in fresh_items:
+        if item.get("return_window_end") is None:
+            old = existing_by_id.get(item.get("item_id"))
+            if old and old.get("return_window_end"):
+                item["return_window_end"] = old["return_window_end"]
+
+
 def write_output(items: list[dict], year: int, email: str | None = None) -> None:
     os.makedirs("data", exist_ok=True)
     path = f"data/app_data_{year}.js"
@@ -959,6 +974,8 @@ def main():
         # ------------------------------------------------------------------
         year = args.year
         print(f"Mode: historical backfill for {year}")
+        existing_items = load_existing_items(year)
+        existing_by_id = {i["item_id"]: i for i in existing_items}
         print(f"Fetching orders for {year}...")
         raw_orders = _fetch_year_with_retry(amazon_orders, year, verbose=verbose)
         print(f"  Found {len(raw_orders)} orders.")
@@ -966,6 +983,7 @@ def main():
         if verbose:
             print(f"  [summary] Built {len(items)} item records from {len(raw_orders)} orders")
         enrich_items_with_asin_cache(items, session, verbose=verbose)
+        _preserve_return_window(items, existing_by_id)
         write_output(items, year, email=email)
 
     else:
@@ -1009,6 +1027,14 @@ def main():
                     default=cutoff_approx.isoformat(),
                 )
                 kept = [i for i in existing if (i.get("order_date") or "") < earliest_fresh]
+                # Preserve return_window_end for items whose date was captured before
+                # they transitioned to "Return Started" (Amazon hides the date after that)
+                replaced_by_id = {
+                    i["item_id"]: i
+                    for i in existing
+                    if (i.get("order_date") or "") >= earliest_fresh
+                }
+                _preserve_return_window(fresh, replaced_by_id)
                 if verbose:
                     print(
                         f"  [merge] year {year}: earliest fresh date = {earliest_fresh}, "
