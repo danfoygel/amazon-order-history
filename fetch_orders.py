@@ -241,7 +241,9 @@ _PRODUCT_PAGE_HEADERS = {
 }
 
 
-def fetch_product_page_info(session, asin: str, verbose: bool = False) -> "tuple[dict | None, str | None]":
+def fetch_product_page_info(
+    session, asin: str, verbose: bool = False, max_retries: int = 3
+) -> "tuple[dict | None, str | None]":
     """GET the product detail page for one ASIN and extract cacheable fields.
 
     Returns:
@@ -249,6 +251,10 @@ def fetch_product_page_info(session, asin: str, verbose: bool = False) -> "tuple
                          if the signal wasn't found on the page.
         (None, str)    — failure; str describes the reason (HTTP status, exception
                          message, etc.).  Caller should not cache this result.
+
+    Retries up to max_retries times with exponential backoff (1 s, 2 s, 4 s …)
+    on transient errors (5xx, 429, network exceptions).  Permanent failures
+    (404, 403, etc.) are returned immediately without retrying.
 
     Currently extracted fields:
         return_policy  "free_or_replace" | "non_returnable" | None
@@ -258,34 +264,64 @@ def fetch_product_page_info(session, asin: str, verbose: bool = False) -> "tuple
         if verbose:
             print(f"    [{asin}] {reason}")
         return None, reason
+
+    # HTTP status codes worth retrying (transient server-side errors).
+    RETRYABLE_STATUSES = {429, 500, 502, 503, 504}
+
     url = f"https://www.amazon.com/dp/{asin}"
-    try:
-        resp = session.session.get(url, headers=_PRODUCT_PAGE_HEADERS, timeout=15)
-        if resp.status_code != 200:
-            reason = f"HTTP {resp.status_code}"
+    last_reason: str = "unknown error"
+    for attempt in range(1, max_retries + 1):
+        try:
+            resp = session.session.get(url, headers=_PRODUCT_PAGE_HEADERS, timeout=15)
+            if resp.status_code != 200:
+                last_reason = f"HTTP {resp.status_code}"
+                if resp.status_code not in RETRYABLE_STATUSES or attempt == max_retries:
+                    if verbose:
+                        suffix = (
+                            f" after {max_retries} attempts"
+                            if attempt == max_retries and resp.status_code in RETRYABLE_STATUSES
+                            else ""
+                        )
+                        print(f"    [{asin}] {last_reason}{suffix}")
+                    return None, last_reason
+                wait = 2 ** (attempt - 1)
+                if verbose:
+                    print(
+                        f"    [{asin}] {last_reason} — retrying in {wait}s"
+                        f" (attempt {attempt}/{max_retries})…"
+                    )
+                time.sleep(wait)
+                continue
+            # 200 OK — parse the page
+            soup = _BeautifulSoup(resp.text, "html.parser")
+            # Strip customer-review sections to avoid false positives from review text
+            for el in soup.select("#customerReviews, #reviews-medley, #cr-medley"):
+                el.decompose()
+            text = soup.get_text(" ", strip=True).lower()
+            result: dict = {}
+            if "non-returnable" in text:
+                result["return_policy"] = "non_returnable"
+            elif "free returns" in text:
+                result["return_policy"] = "free_or_replace"
+            else:
+                result["return_policy"] = None  # page loaded but no clear signal
             if verbose:
-                print(f"    [{asin}] {reason}")
-            return None, reason
-        soup = _BeautifulSoup(resp.text, "html.parser")
-        # Strip customer-review sections to avoid false positives from review text
-        for el in soup.select("#customerReviews, #reviews-medley, #cr-medley"):
-            el.decompose()
-        text = soup.get_text(" ", strip=True).lower()
-        result: dict = {}
-        if "non-returnable" in text:
-            result["return_policy"] = "non_returnable"
-        elif "free returns" in text:
-            result["return_policy"] = "free_or_replace"
-        else:
-            result["return_policy"] = None  # page loaded but no clear signal
-        if verbose:
-            print(f"    [{asin}] return_policy = {result['return_policy']!r}")
-        return result, None
-    except Exception as exc:
-        reason = str(exc)
-        if verbose:
-            print(f"    [{asin}] error: {reason}")
-        return None, reason
+                print(f"    [{asin}] return_policy = {result['return_policy']!r}")
+            return result, None
+        except Exception as exc:
+            last_reason = str(exc)
+            if attempt == max_retries:
+                if verbose:
+                    print(f"    [{asin}] error: {last_reason} after {max_retries} attempts")
+                return None, last_reason
+            wait = 2 ** (attempt - 1)
+            if verbose:
+                print(
+                    f"    [{asin}] error: {last_reason} — retrying in {wait}s"
+                    f" (attempt {attempt}/{max_retries})…"
+                )
+            time.sleep(wait)
+    return None, last_reason  # unreachable, but satisfies the type checker
 
 
 def enrich_items_with_asin_cache(
