@@ -234,3 +234,9 @@ Add an optional browser notification (via the Notifications API) that fires when
 During the ASIN product-page fetch (which already happens for return-policy detection), also scrape the current price and store it in `asin_cache.json` alongside `return_policy`. Over time, with repeated fetches, this builds a rudimentary price history per ASIN. The frontend could show a small sparkline on each card showing how the price has changed since purchase. Requires a backend change to `fetch_product_page_info` (add a `current_price` field) and a cache schema migration (add a `price_history` array of `{date, price}` entries).
 
 ---
+
+## Item 32: Identify and display digital orders
+
+Digital downloads (e.g. software, Kindle books) have empty `delivery_status` because there's no physical shipment. Currently these are indistinguishable from physical orders where Amazon simply dropped the tracking data. Investigate how to reliably detect digital orders (product category, ASIN patterns, order metadata) and give them a distinct status or visual indicator instead of lumping them in with empty-status physical orders. Example: order 114-2932976-0773838 (TurboTax Premier Desktop Edition 2025, PC/Mac Download).
+
+---

@@ -8,8 +8,9 @@
 // runs the same deriveStatus / effectiveStatus / parseExpectedDelivery logic
 // used by the browser app.  Prints errors for anything that cannot be parsed.
 //
-// Items listed in data/known_status_issues.json are silently skipped (old
-// orders with degraded data that cannot be fixed).
+// Items with degraded data are handled via the known-status overrides in
+// data/known_status_issues.json (loaded by status.js).  Any item whose
+// effectiveStatus resolves to "Unknown" is flagged as an error.
 //
 // Usage:
 //   node validate_data.js [data_dir]
@@ -24,15 +25,7 @@ const {
   deriveStatus,
   effectiveStatus,
   parseExpectedDelivery,
-  daysSince,
-  ASSUME_DELIVERED_AFTER_DAYS,
 } = require("./status.js");
-
-// ---------------------------------------------------------------------------
-// Known keywords — delivery_status strings that DON'T match any STATUS_RULE
-// but are silently classified via the order-age fallback are flagged here.
-// ---------------------------------------------------------------------------
-const KNOWN_KEYWORDS = STATUS_RULES.map(([pattern]) => pattern);
 
 const VALID_RETURN_POLICIES = new Set([
   "free_or_replace", "return_only", "non_returnable", null, undefined,
@@ -42,19 +35,6 @@ const VALID_RETURN_STATUSES = new Set([
   "none", "return_started", "return_in_transit", "return_complete",
   "replacement_ordered", "replacement_complete", null, undefined, "",
 ]);
-
-// ---------------------------------------------------------------------------
-// Load the known-issues allowlist (lives in the data directory).
-// ---------------------------------------------------------------------------
-function loadKnownIssues(dataDir) {
-  const p = path.join(dataDir, "known_status_issues.json");
-  try {
-    const data = JSON.parse(fs.readFileSync(p, "utf-8"));
-    return new Set(data.items || []);
-  } catch {
-    return new Set();
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Parse a data file.  Format: window.ORDER_DATA_YYYY = { ... };
@@ -84,26 +64,23 @@ function validateItem(item, year) {
   }
 
   // --- Status derivation ---
-  let derived;
   try {
-    derived = deriveStatus(item.delivery_status, item.order_date, item.tracking_url);
+    deriveStatus(item.delivery_status, item.order_date, item.tracking_url);
   } catch (e) {
     errors.push(`deriveStatus threw: ${e.message}`);
   }
 
-  // Check for unrecognised delivery_status that fell through to order-age default
-  if (item.delivery_status && (derived === "Ordered" || derived === "Delivered")) {
-    const raw = item.delivery_status.toLowerCase();
-    if (!KNOWN_KEYWORDS.some(k => raw.includes(k))) {
-      errors.push(`unrecognised delivery_status: "${item.delivery_status}" → defaulted to ${derived}`);
-    }
-  }
-
-  // --- effectiveStatus ---
+  // --- effectiveStatus (includes known-issue overrides) ---
+  let effective;
   try {
-    effectiveStatus(item);
+    effective = effectiveStatus(item);
   } catch (e) {
     errors.push(`effectiveStatus threw: ${e.message}`);
+  }
+
+  // Flag items that still resolve to "Unknown" after overrides
+  if (effective === "Unknown") {
+    errors.push(`status is Unknown (delivery_status: "${item.delivery_status || ""}")`);
   }
 
   // --- Expected delivery parsing ---
@@ -145,8 +122,6 @@ function main() {
     process.exit(1);
   }
 
-  const knownIssues = loadKnownIssues(dataDir);
-
   // Discover year files and sort in reverse chronological order
   const yearFiles = fs.readdirSync(dataDir)
     .filter(f => /^app_data_\d{4}\.js$/.test(f))
@@ -163,7 +138,6 @@ function main() {
 
   let totalItems = 0;
   let totalErrors = 0;
-  let totalSkipped = 0;
   const statusCounts = {};
 
   for (const file of yearFiles) {
@@ -181,21 +155,15 @@ function main() {
 
     const items = data.items || [];
     let yearErrors = 0;
-    let yearSkipped = 0;
 
     for (const item of items) {
       totalItems++;
-      const derived = deriveStatus(item.delivery_status, item.order_date, item.tracking_url);
-      statusCounts[derived] = (statusCounts[derived] || 0) + 1;
+      const effective = effectiveStatus(item);
+      statusCounts[effective] = (statusCounts[effective] || 0) + 1;
 
       const errors = validateItem(item, year);
       if (errors.length > 0) {
         const id = item.item_id || item.order_id || "(unknown)";
-        if (knownIssues.has(id)) {
-          yearSkipped++;
-          totalSkipped++;
-          continue;
-        }
         yearErrors += errors.length;
         totalErrors += errors.length;
         for (const err of errors) {
@@ -206,8 +174,7 @@ function main() {
 
     const parts = [`${items.length} items`];
     if (yearErrors > 0) parts.push(`${yearErrors} error(s)`);
-    if (yearSkipped > 0) parts.push(`${yearSkipped} known issue(s) skipped`);
-    if (yearErrors === 0 && yearSkipped === 0) parts.push("ok");
+    if (yearErrors === 0) parts.push("ok");
     console.log(`${year}  ${parts.join("  ")}`);
   }
 
@@ -217,9 +184,6 @@ function main() {
   console.log("Status distribution:");
   for (const [status, count] of Object.entries(statusCounts)) {
     console.log(`  "${status}": ${count}`);
-  }
-  if (totalSkipped > 0) {
-    console.log(`(${totalSkipped} known issue(s) skipped — see data/known_status_issues.json)`);
   }
 
   if (totalErrors > 0) {

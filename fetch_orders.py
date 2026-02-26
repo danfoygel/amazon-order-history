@@ -167,25 +167,32 @@ def extract_return_info(item) -> tuple[str | None, str | None]:
                            (characteristic of food, consumables, and similar
                            non-returnable categories on the order page)
       None               — ambiguous (no return span but connections div has
-                           content, e.g. expired window on a normal item)
+                           content), or return window is closed (date is still
+                           captured but policy can't be determined from closed text)
     """
     parsed = getattr(item, "parsed", None)
     if parsed is None:
         return None, None
 
     # Amazon's current HTML puts return eligibility in a span.a-size-small that
-    # contains the text "Eligible through".  The older data-component selector
+    # contains "Eligible through" (open window) or "Return window closed on"
+    # (expired window).  The older data-component selector
     # (data-component='itemReturnEligibility') is no longer used by Amazon.
     for span in parsed.select("span.a-size-small"):
         text = span.get_text(" ", strip=True)
         lower = text.lower()
-        if "eligible through" not in lower:
-            continue
-        date_str = _parse_return_date(text)
-        if "return or replace items" in lower:
-            return date_str, "free_or_replace"
-        else:
-            return date_str, "return_only"
+        if "eligible through" in lower:
+            date_str = _parse_return_date(text)
+            if "return or replace items" in lower:
+                return date_str, "free_or_replace"
+            else:
+                return date_str, "return_only"
+        if "return window closed" in lower:
+            date_str = _parse_return_date(text)
+            # Window is closed — we know the item was returnable, but we can't
+            # distinguish free_or_replace vs return_only from the closed text.
+            # Use None for policy so the ASIN cache can provide the real answer.
+            return date_str, None
 
     # No return span — check whether the item-level connections div is empty.
     # A completely empty div (no Buy-it-again, no return buttons) is the pattern
@@ -194,7 +201,7 @@ def extract_return_info(item) -> tuple[str | None, str | None]:
     if connections is not None and not connections.get_text(strip=True):
         return None, "non_returnable"
 
-    return None, None  # ambiguous: expired window or unknown
+    return None, None  # ambiguous: no return info found
 
 
 # ---------------------------------------------------------------------------
@@ -551,7 +558,10 @@ def _load_known_status_issues() -> set[str]:
     p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "known_status_issues.json")
     try:
         with open(p, encoding="utf-8") as f:
-            return set(json.load(f).get("items", []))
+            items = json.load(f).get("items", {})
+            if isinstance(items, dict):
+                return set(items.keys())
+            return set(items)
     except Exception:
         return set()
 

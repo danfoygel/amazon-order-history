@@ -117,6 +117,7 @@ function computeTabCounts(items) {
     Shipped: 0,
     Ordered: 0,
     Cancelled: 0,
+    Unknown: 0,
     "Return Started": 0,
     "Return in Transit": 0,
     "Return Complete": 0,
@@ -145,6 +146,10 @@ function renderTabCounts(items) {
     const countEl = btn.querySelector(".count");
     if (countEl && counts[filter] !== undefined) {
       countEl.textContent = counts[filter];
+    }
+    // Only show the Unknown tab when there are items with that status
+    if (filter === "Unknown") {
+      btn.style.display = counts.Unknown > 0 ? "" : "none";
     }
   });
 }
@@ -187,6 +192,7 @@ function statusBadgeHtml(status) {
     "Return in Transit":   ["badge-return-transit",  "Return in Transit"],
     "Return Complete":     ["badge-return-complete", "Return Complete"],
     "Replacement Ordered": ["badge-replacement",     "Replacement"],
+    "Unknown":             ["badge-unknown",         "Unknown"],
   };
   const [cls, label] = map[status] || ["badge-pending", status || "Unknown"];
   return `<span class="badge ${cls}">${label}</span>`;
@@ -747,11 +753,11 @@ async function init() {
 // ---------------------------------------------------------------------------
 function logDiagnostics(items) {
   const statusCounts = {};
-  const deliverySamples = {};  // derived status → [delivery_status strings]
-  const unknownSamples  = [];  // delivery_status strings that fell through to default
+  const deliverySamples = {};  // effective status → [delivery_status strings]
+  const unknownSamples  = [];  // items whose effective status is "Unknown"
 
   for (const item of items) {
-    const s = deriveStatus(item.delivery_status, item.order_date, item.tracking_url);
+    const s = effectiveStatus(item);
     statusCounts[s] = (statusCounts[s] || 0) + 1;
 
     if (item.delivery_status) {
@@ -759,18 +765,8 @@ function logDiagnostics(items) {
       deliverySamples[s].add(item.delivery_status);
     }
 
-    // Flag items whose raw delivery_status doesn't match any known keyword
-    // and whose derived status is Delivered/Ordered (possible mis-classification).
-    if (item.delivery_status && (s === "Ordered" || s === "Delivered")) {
-      const raw = item.delivery_status.toLowerCase();
-      const knownKeywords = [
-        "cancelled", "canceled", "return", "refund", "replacement", "delivered",
-        "out for delivery", "on the way", "not yet shipped", "shipped", "in transit",
-        "now arriving", "arriving", "preparing", "order placed", "payment pending",
-      ];
-      if (!knownKeywords.some(k => raw.includes(k))) {
-        unknownSamples.push({ status: s, delivery_status: item.delivery_status });
-      }
+    if (s === "Unknown") {
+      unknownSamples.push({ item_id: item.item_id, delivery_status: item.delivery_status });
     }
   }
 
@@ -783,11 +779,11 @@ function logDiagnostics(items) {
   console.group("Order History Diagnostics");
   console.log(`Total items: ${items.length}`);
   console.table(statusCounts);
-  console.log("Sample raw delivery_status by derived status:", samples);
+  console.log("Sample raw delivery_status by effective status:", samples);
   if (unknownSamples.length) {
     console.warn(
-      `${unknownSamples.length} item(s) have unrecognised delivery_status strings ` +
-      `(check STATUS_RULES in app.js):`,
+      `${unknownSamples.length} item(s) have Unknown status ` +
+      `(check status_rules.json and data/known_status_issues.json):`,
       unknownSamples.slice(0, 20)
     );
   }
@@ -807,7 +803,14 @@ const GRAPH_STATUSES = [
   "Return in Transit",
   "Return Complete",
   "Cancelled",
+  "Unknown",
 ];
+
+// Returns GRAPH_STATUSES filtered to omit "Unknown" when there are none.
+function activeGraphStatuses() {
+  const hasUnknown = allItems.some(item => effectiveStatus(item) === "Unknown");
+  return hasUnknown ? GRAPH_STATUSES : GRAPH_STATUSES.filter(s => s !== "Unknown");
+}
 
 // Display labels for chart legends (where internal status name differs)
 const GRAPH_STATUS_LABELS = {
@@ -824,6 +827,7 @@ const GRAPH_STATUS_COLORS = {
   "Return in Transit":   "#06b6d4",   // cyan (clearly distinct from blue)
   "Return Complete":     "#9ca3af",   // muted gray
   "Cancelled":           "#dc2626",   // red
+  "Unknown":             "#f97316",   // orange (warning)
 };
 
 let graphChartInstance = null;
@@ -842,7 +846,8 @@ function buildGraphData() {
   const years = Object.keys(byYear).sort();
   // Datasets ordered Cancelled→Ordered so bars stack with Cancelled at bottom, Ordered at top.
   // Legend uses reverse:true to display Ordered first (left) and Cancelled last (right).
-  const datasets = [...GRAPH_STATUSES].reverse().map(status => ({
+  const statuses = activeGraphStatuses();
+  const datasets = [...statuses].reverse().map(status => ({
     label: GRAPH_STATUS_LABELS[status] || status,
     data: years.map(y => byYear[y][status] || 0),
     backgroundColor: GRAPH_STATUS_COLORS[status],
@@ -883,7 +888,8 @@ function buildMonthlyGraphData() {
   }
 
   // Same stack order as the annual chart: Cancelled at bottom, Ordered at top.
-  const datasets = [...GRAPH_STATUSES].reverse().map(status => ({
+  const statuses = activeGraphStatuses();
+  const datasets = [...statuses].reverse().map(status => ({
     label: GRAPH_STATUS_LABELS[status] || status,
     data: monthKeys.map(k => (byMonth[k] && byMonth[k][status]) || 0),
     backgroundColor: GRAPH_STATUS_COLORS[status],
