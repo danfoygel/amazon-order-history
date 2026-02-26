@@ -9,38 +9,12 @@
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
-// Status derivation (mirrors logic that was previously in fetch_orders.py)
+// Status derivation — rules loaded from status_rules.json (single source of
+// truth shared with status.js, validate_data.js, and fetch_orders.py).
 // ---------------------------------------------------------------------------
-const STATUS_RULES = [
-  // Cancelled
-  ["cancelled",              "Cancelled"],
-  ["canceled",               "Cancelled"],
-  // Return states
-  ["return complete",        "Return Complete"],
-  ["return received",        "Return Complete"],
-  ["replacement complete",   "Return Complete"],
-  ["return started",         "Return Started"],
-  ["return in transit",      "Return in Transit"],
-  ["refunded",               "Return in Transit"],
-  ["refund issued",          "Return in Transit"],
-  ["replacement ordered",    "Replacement Ordered"],
-  // Delivered
-  ["delivered",              "Delivered"],
-  // Shipped / en route ("not yet shipped" must precede "shipped" to avoid false match)
-  ["out for delivery",       "Shipped"],
-  ["on the way",             "Shipped"],
-  ["not yet shipped",        "Ordered"],
-  ["shipped",                "Shipped"],
-  ["in transit",             "Shipped"],
-  ["now arriving",           "Shipped"],
-  ["arriving",               "Shipped"],
-  // Not yet shipped
-  ["preparing for shipment", "Ordered"],
-  ["order placed",           "Ordered"],
-  ["payment pending",        "Ordered"],
-];
-
-const ASSUME_DELIVERED_AFTER_DAYS = 14;
+const _rulesData = require("./status_rules.json");
+const STATUS_RULES = _rulesData.rules;
+const ASSUME_DELIVERED_AFTER_DAYS = _rulesData.assume_delivered_after_days;
 
 // Returns true only when the tracking URL contains a shipmentId parameter,
 // which Amazon adds once a package has been assigned to a carrier.

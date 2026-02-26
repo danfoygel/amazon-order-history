@@ -162,9 +162,9 @@ describe("deriveStatus", () => {
   });
 
   // Fallbacks — empty delivery_status
-  it("returns Delivered for empty delivery_status on old order (>14d)", () => {
-    // 2025-06-11 - 2025-05-01 = 41 days
-    expect(deriveStatus("", "2025-05-01", null)).toBe("Delivered");
+  it(`returns Delivered for empty delivery_status on old order (>${ASSUME_DELIVERED_AFTER_DAYS}d)`, () => {
+    // 2025-06-11 - 2025-01-01 = 161 days (well over the threshold)
+    expect(deriveStatus("", "2025-01-01", null)).toBe("Delivered");
   });
 
   it("returns Ordered for empty delivery_status on recent order", () => {
@@ -178,7 +178,7 @@ describe("deriveStatus", () => {
 
   // Fallbacks — unrecognized text
   it("returns Delivered for unrecognized text on old order", () => {
-    expect(deriveStatus("Something completely unrecognized", "2025-05-01", null)).toBe("Delivered");
+    expect(deriveStatus("Something completely unrecognized", "2025-01-01", null)).toBe("Delivered");
   });
 
   it("returns Ordered for unrecognized text on recent order", () => {
@@ -187,7 +187,7 @@ describe("deriveStatus", () => {
 
   // Edge: whitespace-only delivery_status treated as empty
   it("treats whitespace-only delivery_status as empty", () => {
-    expect(deriveStatus("   ", "2025-05-01", null)).toBe("Delivered");
+    expect(deriveStatus("   ", "2025-01-01", null)).toBe("Delivered");
   });
 });
 
