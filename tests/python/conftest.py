@@ -7,7 +7,7 @@ amazonorders imports) by mocking them before importing fetch_orders.
 import sys
 import os
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, MagicMock
 
 import pytest
 
@@ -18,6 +18,26 @@ import pytest
 PROJECT_ROOT = str(Path(__file__).resolve().parent.parent.parent)
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
+
+# ---------------------------------------------------------------------------
+# Mock heavy/optional dependencies so tests run without them installed
+# ---------------------------------------------------------------------------
+
+# amazonorders — the library requires credentials and isn't needed for unit tests
+for _mod_name in (
+    "amazonorders",
+    "amazonorders.session",
+    "amazonorders.orders",
+    "amazonorders.conf",
+):
+    if _mod_name not in sys.modules:
+        sys.modules[_mod_name] = MagicMock()
+
+# dotenv — load_dotenv is called at module level
+if "dotenv" not in sys.modules:
+    _dotenv_mock = MagicMock()
+    _dotenv_mock.load_dotenv = MagicMock()
+    sys.modules["dotenv"] = _dotenv_mock
 
 
 # ---------------------------------------------------------------------------
