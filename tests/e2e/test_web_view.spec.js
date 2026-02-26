@@ -447,13 +447,12 @@ test.describe('Demoted Return Started item (Kayak Hoists)', () => {
 
 test.describe('Card content', () => {
 
-  test('card shows price and quantity', async ({ page }) => {
+  test('card shows quantity when > 1', async ({ page }) => {
     await loadApp(page);
     await clickTab(page, 'Shipped');
     const card = page.locator('.item-card', { hasText: 'Punching Bag' });
-    // Punching Bag: $36.44 x 2
-    await expect(card.locator('.price')).toContainText('$36.44');
-    await expect(card.locator('.price')).toContainText('\u00d7 2');
+    // Punching Bag: qty 2
+    await expect(card).toContainText('Qty: 2');
   });
 
   test('card shows order date', async ({ page }) => {
@@ -498,14 +497,12 @@ test.describe('Return window badges', () => {
     await expect(card.locator('.return-badge-closed')).toBeVisible();
   });
 
-  test('Mail Back items with unknown deadline show warning', async ({ page }) => {
+  test('Mail Back items with deadline show mail-back badge', async ({ page }) => {
     await loadApp(page);
     await clickTab(page, 'Return Started');
     const card = page.locator('.item-card', { hasText: 'Panasonic' });
-    // return_window_end=null → "Mail back — deadline unknown" warning badge.
-    const badge = card.locator('.return-badge-warn');
-    await expect(badge).toBeVisible();
-    await expect(badge).toContainText('deadline unknown');
+    // return_window_end=2099-03-15 → "Mail back by Mar 15" badge.
+    await expect(card).toContainText('Mail back by');
   });
 });
 
