@@ -2,8 +2,7 @@
 .env
 
 # Generated data files (contain personal order history)
-data/*
-!data/known_status_issues.json
+data/
 output/
 
 # Python
