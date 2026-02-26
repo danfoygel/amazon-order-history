@@ -1,42 +1,24 @@
 // ---------------------------------------------------------------------------
 // Status derivation — shared between the browser app and the CLI validator.
 //
+// Rules are defined in status_rules.json (single source of truth, also used
+// by fetch_orders.py).
+//
 // Browser: loaded as a plain <script>; functions become globals.
 // Node.js: loaded via require(); functions are exported on module.exports.
 // ---------------------------------------------------------------------------
 
-const STATUS_RULES = [
-  // Cancelled
-  ["cancelled",              "Cancelled"],
-  ["canceled",               "Cancelled"],
-  // Return states
-  ["return complete",        "Return Complete"],
-  ["return received",        "Return Complete"],
-  ["replacement complete",   "Return Complete"],
-  ["return request approved", "Return Started"],
-  ["return requested",       "Return Started"],
-  ["return started",         "Return Started"],
-  ["return in transit",      "Return in Transit"],
-  ["refunded",               "Return in Transit"],
-  ["refund issued",          "Return in Transit"],
-  ["replacement ordered",    "Replacement Ordered"],
-  // Delivered
-  ["delivered",              "Delivered"],
-  // Shipped / en route ("not yet shipped" must precede "shipped" to avoid false match)
-  ["out for delivery",       "Shipped"],
-  ["on the way",             "Shipped"],
-  ["not yet shipped",        "Ordered"],
-  ["shipped",                "Shipped"],
-  ["in transit",             "Shipped"],
-  ["now arriving",           "Shipped"],
-  ["arriving",               "Shipped"],
-  // Not yet shipped
-  ["preparing for shipment", "Ordered"],
-  ["order placed",           "Ordered"],
-  ["payment pending",        "Ordered"],
-];
+const _rulesData = (typeof require !== "undefined")
+  ? require("./status_rules.json")
+  : (function() {
+      var xhr = new XMLHttpRequest();
+      xhr.open("GET", "status_rules.json", false);
+      xhr.send();
+      return JSON.parse(xhr.responseText);
+    })();
 
-const ASSUME_DELIVERED_AFTER_DAYS = 14;
+const STATUS_RULES = _rulesData.rules;
+const ASSUME_DELIVERED_AFTER_DAYS = _rulesData.assume_delivered_after_days;
 
 // Returns true only when the tracking URL contains a shipmentId parameter,
 // which Amazon adds once a package has been assigned to a carrier.
