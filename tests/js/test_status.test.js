@@ -167,22 +167,19 @@ describe("deriveStatus", () => {
     expect(deriveStatus("", "2025-01-01", null)).toBe("Delivered");
   });
 
-  it("returns Ordered for empty delivery_status on recent order", () => {
+  it("returns Unknown for empty delivery_status on recent order", () => {
     // 2025-06-11 - 2025-06-10 = 1 day
-    expect(deriveStatus("", "2025-06-10", null)).toBe("Ordered");
+    expect(deriveStatus("", "2025-06-10", null)).toBe("Unknown");
   });
 
-  it("returns Ordered for null delivery_status on recent order", () => {
-    expect(deriveStatus(null, "2025-06-10", null)).toBe("Ordered");
+  it("returns Unknown for null delivery_status on recent order", () => {
+    expect(deriveStatus(null, "2025-06-10", null)).toBe("Unknown");
   });
 
   // Fallbacks — unrecognized text
-  it("returns Delivered for unrecognized text on old order", () => {
-    expect(deriveStatus("Something completely unrecognized", "2025-01-01", null)).toBe("Delivered");
-  });
-
-  it("returns Ordered for unrecognized text on recent order", () => {
-    expect(deriveStatus("Something completely unrecognized", "2025-06-10", null)).toBe("Ordered");
+  it("returns Unknown for unrecognized text (regardless of age)", () => {
+    expect(deriveStatus("Something completely unrecognized", "2025-01-01", null)).toBe("Unknown");
+    expect(deriveStatus("Something completely unrecognized", "2025-06-10", null)).toBe("Unknown");
   });
 
   // Edge: whitespace-only delivery_status treated as empty

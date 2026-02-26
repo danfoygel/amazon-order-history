@@ -1,28 +1,53 @@
 "use strict";
 
 // ---------------------------------------------------------------------------
-// order_logic.js — Pure logic functions extracted from app.js for testability.
+// order_logic.js — Pure logic functions for the Order History app.
 //
-// In the browser, this file is loaded via <script> before app.js, so all
-// functions are available as globals.  In Node.js tests, the conditional
-// module.exports at the bottom makes everything importable via require().
+// Single source of truth for status derivation, sorting, formatting, and
+// display helpers.  Rules are loaded from status_rules.json (also used by
+// fetch_orders.py).
+//
+// Browser: loaded as a plain <script> before app.js; functions become globals.
+// Node.js: loaded via require(); functions are exported on module.exports.
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
-// Status derivation — rules loaded from status_rules.json (single source of
-// truth shared with status.js, validate_data.js, and fetch_orders.py).
-//
-// In the browser, status.js is loaded after this script and provides the
-// authoritative STATUS_RULES, ASSUME_DELIVERED_AFTER_DAYS, deriveStatus, and
-// effectiveStatus.  In Node.js (tests), this script is the sole provider.
+// Status rules + known-issue overrides
 // ---------------------------------------------------------------------------
-if (typeof require !== "undefined") {
-  (function() {
-    var rd = require("./status_rules.json");
-    globalThis.STATUS_RULES = rd.rules;
-    globalThis.ASSUME_DELIVERED_AFTER_DAYS = rd.assume_delivered_after_days;
-  })();
-}
+const _rulesData = (typeof require !== "undefined")
+  ? require("./status_rules.json")
+  : (function() {
+      var xhr = new XMLHttpRequest();
+      xhr.open("GET", "status_rules.json", false);
+      xhr.send();
+      return JSON.parse(xhr.responseText);
+    })();
+
+const STATUS_RULES = _rulesData.rules;
+const ASSUME_DELIVERED_AFTER_DAYS = _rulesData.assume_delivered_after_days;
+
+// Known-status overrides (item_id → status).  Gracefully returns {} if the
+// file is absent (e.g. fresh clone without a data/ directory).
+const _knownStatusData = (typeof require !== "undefined")
+  ? (function() {
+      try { return require("./data/known_status_issues.json"); }
+      catch { return {}; }
+    })()
+  : (function() {
+      try {
+        var xhr = new XMLHttpRequest();
+        xhr.open("GET", "data/known_status_issues.json", false);
+        xhr.send();
+        if (xhr.status === 200) return JSON.parse(xhr.responseText);
+      } catch {}
+      return {};
+    })();
+
+const KNOWN_STATUS_OVERRIDES = _knownStatusData.items || {};
+
+// ---------------------------------------------------------------------------
+// Status derivation
+// ---------------------------------------------------------------------------
 
 // Returns true only when the tracking URL contains a shipmentId parameter,
 // which Amazon adds once a package has been assigned to a carrier.
@@ -35,8 +60,10 @@ function hasShipmentId(trackingUrl) {
 function deriveStatus(deliveryStatus, orderDate, trackingUrl) {
   const key = (deliveryStatus || "").trim().toLowerCase();
   if (!key) {
+    // Empty delivery_status: Amazon doesn't retain tracking for older orders.
+    // Assume delivered if ordered long enough ago; otherwise Unknown.
     if (orderDate && daysSince(orderDate) > ASSUME_DELIVERED_AFTER_DAYS) return "Delivered";
-    return "Ordered";
+    return "Unknown";
   }
   for (const [pattern, value] of STATUS_RULES) {
     if (key.includes(pattern)) {
@@ -49,8 +76,8 @@ function deriveStatus(deliveryStatus, orderDate, trackingUrl) {
       return value;
     }
   }
-  if (orderDate && daysSince(orderDate) > ASSUME_DELIVERED_AFTER_DAYS) return "Delivered";
-  return "Ordered";
+  // Non-empty delivery_status that doesn't match any rule — a real parsing issue.
+  return "Unknown";
 }
 
 function daysSince(isoDate) {
@@ -200,11 +227,15 @@ function orderUrl(item) {
 }
 
 // ---------------------------------------------------------------------------
-// Effective display status (Return Started items kept >30 days past deadline
-// are treated as Delivered for display purposes)
+// Effective display status (applies known-issue overrides and demotes stale
+// Return Started items to Delivered)
 // ---------------------------------------------------------------------------
 function effectiveStatus(item) {
-  const status = deriveStatus(item.delivery_status, item.order_date, item.tracking_url);
+  let status = deriveStatus(item.delivery_status, item.order_date, item.tracking_url);
+  // Apply known-issue overrides for items with degraded status data
+  if (status === "Unknown" && item.item_id && KNOWN_STATUS_OVERRIDES[item.item_id]) {
+    status = KNOWN_STATUS_OVERRIDES[item.item_id];
+  }
   if ((status === "Return Started" || status === "Replacement Ordered") && item.return_window_end) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -317,6 +348,7 @@ if (typeof module !== "undefined" && module.exports) {
   module.exports = {
     STATUS_RULES,
     ASSUME_DELIVERED_AFTER_DAYS,
+    KNOWN_STATUS_OVERRIDES,
     WEEKDAY_NAMES,
     MONTH_NAMES,
     hasShipmentId,

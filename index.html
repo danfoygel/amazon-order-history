@@ -52,12 +52,9 @@
   <script src="data/app_data_manifest.js"></script>
   <!-- Step 2: Chart.js (for graph modal) -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-  <!-- Step 3: helper functions (sorting, formatting, rendering) -->
+  <!-- Step 3: status derivation, sorting, formatting, rendering helpers -->
   <script src="order_logic.js"></script>
-  <!-- Step 4: status derivation logic (overwrites order_logic.js stubs with
-       KNOWN_STATUS_OVERRIDES support; shared with validate_data.js CLI) -->
-  <script src="status.js"></script>
-  <!-- Step 5: app logic — dynamically loads only the year files it needs -->
+  <!-- Step 4: app logic — dynamically loads only the year files it needs -->
   <script src="app.js"></script>
 </body>
 </html>
