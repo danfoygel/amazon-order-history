@@ -138,3 +138,99 @@ All sections in the combined view are now collapsible via a chevron toggle (▾/
 Shortened the display label from "Replacement Ordered" to "Replacement" across the status badge, filter tab, and chart legends to reduce card overflow at narrower viewports. Internal status logic unchanged.
 
 ---
+
+## Item 23: Spending summary
+
+*Automatically suggested by Claude Code on 2026-02-25.*
+
+The data already has `unit_price`, `quantity`, and `order_date` for most items. Add a spending overview — either as a new tab or as a panel in the graph modal — showing:
+
+- Total spend per month and per year (stacked bar or line chart, reusing Chart.js)
+- Average order value and average item price
+- Top N most expensive items (sortable table or card list)
+- Spend broken down by status (useful to see total $ in returns vs delivered)
+
+This is a read-only view of data we already collect; no backend changes needed.
+
+---
+
+## Item 24: Dark mode
+
+*Automatically suggested by Claude Code on 2026-02-25.*
+
+Add a dark theme toggle. The CSS already uses design tokens (`:root` custom properties for all colors), so the implementation is straightforward:
+
+- Add a `:root.dark` (or `[data-theme="dark"]`) block overriding the color tokens
+- Add a toggle button in the header (sun/moon icon)
+- Persist the preference in localStorage
+- Respect `prefers-color-scheme: dark` as the initial default
+
+Badge colors, graph colors, and the modal backdrop all need dark variants.
+
+---
+
+## Item 25: Keyboard navigation
+
+*Automatically suggested by Claude Code on 2026-02-25.*
+
+Add keyboard shortcuts for power users:
+
+- `/` or `Ctrl+K` to focus the search bar
+- `1`–`9` (or `Ctrl+1`–`Ctrl+9`) to switch tabs
+- `j`/`k` to move between item cards (highlight with a focus ring)
+- `Enter` on a focused card to open the Amazon order page
+- `Escape` to clear search / close the graph modal (graph modal already handles backdrop click but not Escape)
+
+Lightweight — just a single `keydown` listener on `document`.
+
+---
+
+## Item 26: Export to CSV
+
+*Automatically suggested by Claude Code on 2026-02-25.*
+
+Add an "Export" button (visible when data is loaded) that generates a CSV of the currently visible items. Fields: order date, title, ASIN, status, unit price, quantity, total price, carrier, return policy, return window end. Uses the Blob API + `URL.createObjectURL` for a pure client-side download — no backend needed.
+
+---
+
+## Item 27: Per-item notes
+
+*Automatically suggested by Claude Code on 2026-02-25.*
+
+Allow the user to attach a short text note to any item (e.g., "gift for Mom", "defective, returning"). Store in localStorage keyed by `item_id` (similar to the existing kept-items implementation). Show as a small muted line below the card's meta row, with an edit icon to add/change.
+
+---
+
+## Item 28: Stale data warning
+
+*Automatically suggested by Claude Code on 2026-02-25.*
+
+When the page loads, compare `generated_at` from the most recent year file against the current date. If the data is more than 7 days old, show a subtle banner below the header: "Data last updated 12 days ago — run `python fetch_orders.py` to refresh." Dismissible, with the dismissal stored in sessionStorage so it doesn't nag on every page load within a single session.
+
+---
+
+## Item 29: Virtual scrolling for large datasets
+
+*Automatically suggested by Claude Code on 2026-02-25.*
+
+With several years of history loaded, the DOM can have thousands of item cards. Currently `renderList` / `renderCombined` create all cards upfront. For users with 5,000+ items, this causes noticeable jank on tab switches.
+
+Implement a lightweight virtual scroller (either a small custom one or a lib like `virtual-scroller`) so only the ~30 visible cards are in the DOM at once. The combined view's collapsible sections make this trickier — probably easiest to virtualize only the flat list views first (single-status tabs, All tab) and leave Combined as-is.
+
+---
+
+## Item 30: Notification of expiring return windows
+
+*Automatically suggested by Claude Code on 2026-02-25.*
+
+Add an optional browser notification (via the Notifications API) that fires when the page loads if any Decide-eligible items have a return window closing within the next 3 days. The user would need to grant notification permission once. This turns the tool from "open it when you remember" into something that actively reminds you.
+
+---
+
+## Item 31: Price tracking / price history
+
+*Automatically suggested by Claude Code on 2026-02-25.*
+
+During the ASIN product-page fetch (which already happens for return-policy detection), also scrape the current price and store it in `asin_cache.json` alongside `return_policy`. Over time, with repeated fetches, this builds a rudimentary price history per ASIN. The frontend could show a small sparkline on each card showing how the price has changed since purchase. Requires a backend change to `fetch_product_page_info` (add a `current_price` field) and a cache schema migration (add a `price_history` array of `{date, price}` entries).
+
+---
