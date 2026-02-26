@@ -536,18 +536,14 @@ def build_items_from_orders(orders: list) -> list[dict]:
 # any STATUS_RULE and aren't in the known-issues allowlist.
 # ---------------------------------------------------------------------------
 
-# Mirrors STATUS_RULES patterns from status.js (kept in sync manually).
-_STATUS_KEYWORDS = [
-    "cancelled", "canceled",
-    "return complete", "return received", "replacement complete",
-    "return request approved", "return requested", "return started",
-    "return in transit", "refunded", "refund issued",
-    "replacement ordered",
-    "delivered",
-    "out for delivery", "on the way", "not yet shipped", "shipped",
-    "in transit", "now arriving", "arriving",
-    "preparing for shipment", "order placed", "payment pending",
-]
+def _load_status_keywords() -> list[str]:
+    """Parse STATUS_RULES patterns from status.js (single source of truth)."""
+    import re
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "status.js")
+    src = open(p, encoding="utf-8").read()
+    return re.findall(r'^\s*\["([^"]+)"', src, re.MULTILINE)
+
+_STATUS_KEYWORDS = _load_status_keywords()
 
 
 def _load_known_status_issues() -> set[str]:
