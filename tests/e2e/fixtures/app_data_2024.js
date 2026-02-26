@@ -1,0 +1,50 @@
+window.ORDER_DATA_2024 = {
+  "generated_at": "2025-06-01T12:00:00.000000+00:00",
+  "email": "test@example.com",
+  "items": [
+    {
+      "item_id": "TEST-ORDER-19__B00TEST0019",
+      "order_id": "TEST-ORDER-19",
+      "order_date": "2024-06-15",
+      "title": "Old Widget",
+      "asin": "B00TEST0019",
+      "quantity": 1,
+      "unit_price": 95.00,
+      "total_price": 95.00,
+      "item_link": "https://www.amazon.com/dp/B00TEST0019",
+      "image_link": null,
+      "carrier": "",
+      "tracking_url": null,
+      "delivery_status": "Delivered",
+      "order_grand_total": 95.00,
+      "return_window_end": null,
+      "return_policy": null,
+      "return_status": "none",
+      "return_initiated_date": null,
+      "return_notes": "",
+      "subscribe_and_save": false
+    },
+    {
+      "item_id": "TEST-ORDER-20__B00TEST0020",
+      "order_id": "TEST-ORDER-20",
+      "order_date": "2024-12-20",
+      "title": "Webcam",
+      "asin": "B00TEST0020",
+      "quantity": 1,
+      "unit_price": 100.00,
+      "total_price": 100.00,
+      "item_link": "https://www.amazon.com/dp/B00TEST0020",
+      "image_link": null,
+      "carrier": "",
+      "tracking_url": null,
+      "delivery_status": "Delivered",
+      "order_grand_total": 100.00,
+      "return_window_end": "2099-06-01",
+      "return_policy": "return_only",
+      "return_status": "none",
+      "return_initiated_date": null,
+      "return_notes": "",
+      "subscribe_and_save": false
+    }
+  ]
+};
