@@ -72,40 +72,8 @@ function filterItems(items, tab, searchQuery) {
   });
 }
 
-function sortItems(items, sort) {
-  const arr = [...items];
-  switch (sort) {
-    case "order_date_asc":
-      return arr.sort((a, b) => (a.order_date || "").localeCompare(b.order_date || ""));
-    case "order_date_desc":
-      return arr.sort((a, b) => (b.order_date || "").localeCompare(a.order_date || ""));
-    case "price_desc":
-      return arr.sort((a, b) => (b.unit_price ?? 0) - (a.unit_price ?? 0));
-    case "price_asc":
-      return arr.sort((a, b) => (a.unit_price ?? 0) - (b.unit_price ?? 0));
-    case "return_window_asc":
-      return arr.sort((a, b) => {
-        if (!a.return_window_end && !b.return_window_end) return 0;
-        if (!a.return_window_end) return 1;
-        if (!b.return_window_end) return -1;
-        return a.return_window_end.localeCompare(b.return_window_end);
-      });
-    case "expected_delivery_asc":
-      return arr.sort((a, b) => {
-        const da = parseExpectedDelivery(a.delivery_status);
-        const db = parseExpectedDelivery(b.delivery_status);
-        if (!da && !db) return 0;
-        if (!da) return 1;
-        if (!db) return -1;
-        return da.localeCompare(db);
-      });
-    default:
-      return arr;
-  }
-}
-
 // ---------------------------------------------------------------------------
-// Tab counts
+// Tab counts (depends on global state: isKept)
 // ---------------------------------------------------------------------------
 function computeTabCounts(items) {
   const today = new Date();
@@ -294,18 +262,6 @@ function thumbnailHtml(item) {
 // ---------------------------------------------------------------------------
 // Card rendering
 // ---------------------------------------------------------------------------
-function isDecideEligible(item) {
-  if (effectiveStatus(item) !== "Delivered") return false;
-  if (!item.return_window_end) return false;
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  return new Date(item.return_window_end + "T00:00:00") >= today;
-}
-
-function isMailBackEligible(item) {
-  const s = effectiveStatus(item);
-  return s === "Return Started" || s === "Replacement Ordered";
-}
-
 function renderCard(item) {
   const href = orderUrl(item);
   const titleHtml = href
@@ -576,17 +532,6 @@ function loadScript(src) {
     s.onerror = reject;
     document.head.appendChild(s);
   });
-}
-
-/**
- * Returns the subset of manifest years whose calendar year is >= the year
- * of (today minus 3 months).  At most 2 years are returned (current + prior).
- */
-function initialYears(manifest) {
-  const cutoff = new Date();
-  cutoff.setMonth(cutoff.getMonth() - 3);
-  const cutoffYear = cutoff.getFullYear();
-  return manifest.filter(y => y >= cutoffYear);
 }
 
 /**

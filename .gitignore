@@ -15,5 +15,12 @@ venv/
 # Claude project settings
 .claude/
 
+# Node.js
+node_modules/
+
+# Playwright
+test-results/
+playwright-report/
+
 # macOS
 .DS_Store

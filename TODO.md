@@ -44,9 +44,9 @@ Replaced the "Show Graph" button with two icon buttons — `▐▐▐ Years` and
 
 ---
 
-## Item 8: Automated Tests
+## Item 8: Automated Tests ✅ (merged PR #36)
 
-It's time to add some automated tests to this project.  This is a bit tricky, since the data is my personal order history - which shouldn't be part of the tests.  So I think the right approach is to mock the Amazon APIs, have those return some synthetic orders, and then verify that everything works in a deterministic and correct way for those orders.  I want to verify both the fetching process and the web view.
+Added three layers of automated testing (297 tests total). Extracted ~400 lines of pure logic from `app.js` into a new `order_logic.js` module (conditional CommonJS exports for browser/Node dual compatibility). Python unit tests (105 via pytest) cover `fetch_orders.py` logic with mocked Amazon APIs. JavaScript unit tests (150 via vitest) cover `order_logic.js` functions. Playwright E2E tests (42) load the full app with realistic fixture data (real ASINs/product names) via route interception and verify tabs, cards, search, filters, and badges. Test instructions added to README.md.
 
 ---
 
@@ -235,7 +235,19 @@ During the ASIN product-page fetch (which already happens for return-policy dete
 
 ---
 
-## Item 32: Identify and display digital orders
+## Item 32: Pixel LeveL Automated Tests
+
+Let's add visual regression testing - evaluate using Percy or BackstopJS or another suitable library.
+
+---
+
+## Item 33: Improve project docs ✅ (merged PR #40)
+
+Moved recurring workflow instructions (worktree data symlink, TODO-driven planning vs implementation, dev server URL sharing) from NOTES.md prompt templates into CLAUDE.md as persistent project instructions. Simplified NOTES.md to short prompt starters with original text preserved in a "Raw Prompts" section.
+
+---
+
+## Item 34: Identify and display digital orders
 
 Digital downloads (e.g. software, Kindle books) have empty `delivery_status` because there's no physical shipment. Currently these are indistinguishable from physical orders where Amazon simply dropped the tracking data. Investigate how to reliably detect digital orders (product category, ASIN patterns, order metadata) and give them a distinct status or visual indicator instead of lumping them in with empty-status physical orders. Example: order 114-2932976-0773838 (TurboTax Premier Desktop Edition 2025, PC/Mac Download).
 

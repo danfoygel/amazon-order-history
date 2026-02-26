@@ -1,0 +1,50 @@
+window.ORDER_DATA_2024 = {
+  "generated_at": "2025-06-01T12:00:00.000000+00:00",
+  "email": "test@example.com",
+  "items": [
+    {
+      "item_id": "113-4034761-9901023__B00PKF6H0M",
+      "order_id": "113-4034761-9901023",
+      "order_date": "2024-06-15",
+      "title": "Skytech 9800324 SKY-3301 Fireplace Remote Control with Timer and Thermostat",
+      "asin": "B00PKF6H0M",
+      "quantity": 1,
+      "unit_price": null,
+      "total_price": null,
+      "item_link": "https://www.amazon.com/dp/B00PKF6H0M",
+      "image_link": "https://m.media-amazon.com/images/I/51ds6CUMAvL._SS142_.jpg",
+      "carrier": "",
+      "tracking_url": null,
+      "delivery_status": "Delivered",
+      "order_grand_total": null,
+      "return_window_end": null,
+      "return_policy": null,
+      "return_status": "none",
+      "return_initiated_date": null,
+      "return_notes": "",
+      "subscribe_and_save": false
+    },
+    {
+      "item_id": "114-0633070-7185048__B07BQTJD65",
+      "order_id": "114-0633070-7185048",
+      "order_date": "2024-12-20",
+      "title": "TYR Stryker Silicone Swim Fins (Pair of 1)",
+      "asin": "B07BQTJD65",
+      "quantity": 1,
+      "unit_price": null,
+      "total_price": null,
+      "item_link": "https://www.amazon.com/dp/B07BQTJD65",
+      "image_link": "https://m.media-amazon.com/images/I/616fXHZyI9L._SS142_.jpg",
+      "carrier": "",
+      "tracking_url": null,
+      "delivery_status": "Delivered",
+      "order_grand_total": null,
+      "return_window_end": "2099-06-01",
+      "return_policy": "return_only",
+      "return_status": "none",
+      "return_initiated_date": null,
+      "return_notes": "",
+      "subscribe_and_save": false
+    }
+  ]
+};

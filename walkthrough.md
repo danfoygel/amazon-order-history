@@ -3,6 +3,12 @@
 *2026-02-25T23:06:46Z by Showboat 0.6.1*
 <!-- showboat-id: 1c64a707-e8e5-4088-8434-a21b06bc0f85 -->
 
+<!-- 
+Read the source and then plan a linear walkthrough of the code that explains how it all works in detail
+
+Then run “uvx showboat –help” to learn showboat - use showboat to create a walkthrough.md file in the repo and build the walkthrough in there, using showboat note for commentary and showboat exec plus sed or grep or cat or whatever you need to include snippets of code you are talking about
+-->
+
 This walkthrough explains every moving part of the **Amazon Order History** project — a tool that scrapes your Amazon order history and presents it in a fast, filterable, single-page web UI.
 
 The project has two halves:

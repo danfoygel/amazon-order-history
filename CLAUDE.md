@@ -1,8 +1,27 @@
 # Project Instructions
 
+After completing a task and presenting it for review, stop and wait for explicit user input. Do not interpret server logs or tool output as user feedback.
+
+## Worktree setup
+
+When working in a worktree, symlink the data directory from the main repo so the app can load order data:
+
+```
+ln -s /Users/dfoygel/OrderHistory/data data
+```
+
+## TODO-driven workflow
+
+Work items live in TODO.md. When asked to work on a TODO item:
+
+- **Planning**: For larger or ambiguous items, write a detailed implementation plan inline in TODO.md under that item's section. Note any important choices or decisions. If you have questions, include them in TODO.md for the user to review. Do not start implementation until the user confirms.
+- **Implementation**: For smaller or well-defined items, proceed directly unless you have critical questions.
+
+When the user says "answers provided in TODO.md", read the updated TODO.md for their responses and proceed with implementation.
+
 ## Git workflow
 
-For all code changes: create a PR and ask the user to review and approve before merging to main.
+For all code changes: create a new feature branch, do the work, then open a PR. Do not merge — wait for the user to review and approve.
 
 Branch protection is enabled on main — direct pushes are rejected. All changes must go through a PR.
 
@@ -10,9 +29,7 @@ After merging a PR, delete the source branch if it is completely safe to do so (
 
 ## Visual Verification
 
-For UI changes: use `preview_start` to run the dev server, then use preview tools
-(snapshot, screenshot, inspect, click) to verify changes visually before reporting
-done. Never ask the user to check manually.
+For UI changes: use `preview_start` to run the dev server on a random port, then use preview tools (snapshot, screenshot, inspect, click) to verify changes visually before reporting done. Never ask the user to check manually. Give the user the localhost URL so they can also view the changes.
 
 ## PR approval workflow
 

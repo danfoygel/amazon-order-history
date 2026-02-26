@@ -104,3 +104,54 @@ To automate this, add a cron job:
 ## Security note
 
 Your Amazon credentials are stored in `.env`, which is gitignored. Never commit `.env`. The `fetch_orders.py` script uses the unofficial `amazon-orders` library, which scrapes Amazon's website — use it for personal use only and at a reasonable frequency (e.g., once daily) to avoid triggering Amazon's bot detection.
+
+---
+
+## Tests
+
+Three test layers cover the Python backend, JavaScript logic, and the full web UI.
+
+### Prerequisites
+
+```
+# Python test dependencies (in addition to the .venv from Setup)
+.venv/bin/pip install pytest beautifulsoup4 requests python-dateutil
+
+# JavaScript / E2E dependencies
+npm install
+npx playwright install --with-deps
+```
+
+### Running all tests
+
+```
+bash tests/run_tests.sh
+```
+
+Or equivalently via npm:
+
+```
+npm run test:all
+```
+
+### Running individual layers
+
+**Python unit tests** — covers `fetch_orders.py` logic (date handling, carrier detection, return info, ASIN enrichment, file I/O, pipeline):
+
+```
+.venv/bin/python -m pytest tests/python/ -v
+```
+
+**JavaScript unit tests** — covers `order_logic.js` pure functions (status mapping, sorting, date formatting, helpers):
+
+```
+npm test
+```
+
+**E2E browser tests** — Playwright tests that load the full app with fixture data and verify tabs, cards, search, filters, and badges:
+
+```
+npm run test:e2e
+```
+
+Playwright automatically starts a local HTTP server on port 8456 for the E2E tests — no manual server setup is needed.
