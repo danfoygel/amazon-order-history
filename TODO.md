@@ -240,3 +240,9 @@ During the ASIN product-page fetch (which already happens for return-policy dete
 Let's add visual regression testing - evaluate using Percy or BackstopJS or another suitable library.
 
 ---
+
+## Item 33: Improve project docs ✅ (merged PR #40)
+
+Moved recurring workflow instructions (worktree data symlink, TODO-driven planning vs implementation, dev server URL sharing) from NOTES.md prompt templates into CLAUDE.md as persistent project instructions. Simplified NOTES.md to short prompt starters with original text preserved in a "Raw Prompts" section.
+
+---
