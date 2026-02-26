@@ -247,6 +247,12 @@ Moved recurring workflow instructions (worktree data symlink, TODO-driven planni
 
 ---
 
+## Item 35: Convert status_rules.json to .js for file:/// compatibility ✅ (merged PR #42)
+
+Converted `status_rules.json` to `status_rules.js` — an inline JS variable loaded via `<script>` tag, eliminating the XHR fetch that CORS blocked under `file:///`. Python extracts the JSON from marker comments in the JS file.
+
+---
+
 ## Item 34: Identify and display digital orders
 
 Digital downloads (e.g. software, Kindle books) have empty `delivery_status` because there's no physical shipment. Currently these are indistinguishable from physical orders where Amazon simply dropped the tracking data. Investigate how to reliably detect digital orders (product category, ASIN patterns, order metadata) and give them a distinct status or visual indicator instead of lumping them in with empty-status physical orders. Example: order 114-2932976-0773838 (TurboTax Premier Desktop Edition 2025, PC/Mac Download).
