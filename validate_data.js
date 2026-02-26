@@ -9,7 +9,7 @@
 // used by the browser app.  Prints errors for anything that cannot be parsed.
 //
 // Items with degraded data are handled via the known-status overrides in
-// data/known_status_issues.json (loaded by status.js).  Any item whose
+// data/known_status_issues.json (loaded by order_logic.js).  Any item whose
 // effectiveStatus resolves to "Unknown" is flagged as an error.
 //
 // Usage:
@@ -25,7 +25,7 @@ const {
   deriveStatus,
   effectiveStatus,
   parseExpectedDelivery,
-} = require("./status.js");
+} = require("./order_logic.js");
 
 const VALID_RETURN_POLICIES = new Set([
   "free_or_replace", "return_only", "non_returnable", null, undefined,

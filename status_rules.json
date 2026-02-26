@@ -1,5 +1,5 @@
 {
-  "_comment": "Shared status derivation rules used by status.js, validate_data.js, and fetch_orders.py. Each entry maps a lowercase substring pattern to a derived status category.",
+  "_comment": "Shared status derivation rules used by order_logic.js, validate_data.js, and fetch_orders.py. Each entry maps a lowercase substring pattern to a derived status category.",
   "assume_delivered_after_days": 90,
   "rules": [
     ["cancelled",              "Cancelled"],

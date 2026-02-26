@@ -12,7 +12,6 @@ const {
   initialYears,
   isDecideEligible,
   isMailBackEligible,
-  GRAPH_STATUSES,
 } = logic;
 
 // ---------------------------------------------------------------------------

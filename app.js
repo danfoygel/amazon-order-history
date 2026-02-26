@@ -32,7 +32,7 @@ function toggleKept(item) {
 let keptIds = loadKept();
 
 // ---------------------------------------------------------------------------
-// Status derivation — loaded from status.js (shared with validate_data.js)
+// Status derivation — loaded from order_logic.js
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
@@ -179,7 +179,7 @@ function orderUrl(item) {
   return `https://www.amazon.com/gp/your-account/order-details?orderID=${encodeURIComponent(item.order_id)}`;
 }
 
-// effectiveStatus() is in status.js
+// effectiveStatus() is in order_logic.js
 
 // ---------------------------------------------------------------------------
 // Return window badge (Delivered and Return Started items)
