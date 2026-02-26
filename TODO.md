@@ -235,9 +235,89 @@ During the ASIN product-page fetch (which already happens for return-policy dete
 
 ---
 
-## Item 32: Pixel LeveL Automated Tests
+## Item 32: Pixel Level Automated Tests
 
 Let's add visual regression testing - evaluate using Percy or BackstopJS or another suitable library.
+
+### Library evaluation
+
+| | Playwright `toHaveScreenshot()` | BackstopJS | Percy |
+|---|---|---|---|
+| **Fits existing stack** | Already installed; same test runner, same fixture data, same route interception | Separate tool with its own config, scenarios, and CLI | SaaS; requires account, API key, CI integration |
+| **Maintenance** | Baselines are local PNG files checked into git; update with `--update-snapshots` | Local reference images + backstop config JSON | Cloud-hosted baselines; tied to a paid service |
+| **Cost** | Free | Free | Free tier limited; paid for serious use |
+| **Pixel diff** | Built-in comparator with configurable `maxDiffPixelRatio` / `maxDiffPixels` / `threshold` | Built-in pixel diff via Resemble.js | Cloud-based diffing with approval UI |
+| **Responsive** | Trivial — just set `page.setViewportSize()` per test | Define separate scenarios per viewport | Define widths in config |
+| **CI friendliness** | Native — `npx playwright test` just works | Needs Docker for consistent rendering | Needs API key in CI env |
+
+**Recommendation: Playwright `toHaveScreenshot()`** — it's already installed, uses the same fixtures and route interception, produces deterministic local baselines, and adds zero new dependencies. BackstopJS would duplicate the server/fixture setup we already have. Percy is overkill for a personal project with no team review workflow.
+
+**Question: Does this choice sound right, or would you prefer one of the others?**
+
+Answer: Yes.
+
+### Handling dynamic / flaky content
+
+1. **Relative dates** ("Arrives today", "3d left") — mock `Date.now()` via `page.addInitScript()` to freeze time to a fixed date (e.g., `2025-06-15`). The fixture data's return windows are already set to far-future (`2099-12-31`) or far-past (`2020-01-01`), so the rendered text will be stable.
+
+2. **Amazon product images** — the existing E2E tests don't intercept image requests, so thumbnails load from `m.media-amazon.com`. For visual baselines these would be flaky (CDN changes, network failures). Plan: intercept `**/images/**` requests and serve a local placeholder PNG from the fixtures directory, so every card shows the same image. Alternatively, use Playwright's `mask` option to exclude image areas from the diff.
+
+3. **Chart.js canvases** — canvas rendering can vary slightly across environments. Plan: mask the `<canvas>` element in graph-modal screenshots, or skip graph screenshots entirely and rely on the existing functional E2E tests for graph behavior.
+
+**Question: For images, do you prefer (a) intercepting and replacing with a placeholder, or (b) masking the image area in screenshots? Option (a) gives a more realistic-looking baseline; option (b) is simpler.**
+
+Answer: Mask.
+
+### What to capture (test scenarios)
+
+Each scenario = one `toHaveScreenshot()` call with a named baseline file.
+
+**Full-page views (desktop 1280×800):**
+1. Combined view (default on load, with "load all" link visible)
+2. Combined view after "load all" (all sections expanded)
+3. Combined view with a section collapsed
+4. All tab
+5. Delivered tab (most items)
+6. Return Started tab
+7. Cancelled tab (or another low-count tab)
+8. Search active with results
+9. Search active with no results
+10. S&S filter active
+11. Graph modal — Years chart
+12. Graph modal — Months chart
+
+**Individual card detail (element screenshot):**
+13. A delivered card with return-policy badge and "Return by" date
+14. A shipped card with tracking info
+15. An S&S card with the blue pill badge
+16. A non-returnable card with red badge
+
+**Responsive (mobile 375×812):**
+17. Combined view — verifies single-column layout
+18. Filter nav — verifies tab wrapping
+
+That's ~18 screenshots. Each one is a separate test case in a new `tests/e2e/test_visual.spec.js` file.
+
+### Implementation plan
+
+1. **Create `tests/e2e/fixtures/placeholder.png`** — a small neutral placeholder image for product thumbnails.
+
+2. **Create `tests/e2e/test_visual.spec.js`** with:
+   - A shared `beforeEach` that: loads the app via the existing `loadApp` pattern, mocks `Date.now()` to a fixed timestamp, intercepts image requests to serve the placeholder.
+   - ~18 test cases as listed above, each calling `await expect(page).toHaveScreenshot('name.png')` or `await expect(locator).toHaveScreenshot('name.png')`.
+   - Configurable `maxDiffPixelRatio: 0.01` (1% tolerance) to absorb sub-pixel anti-aliasing differences across environments.
+
+3. **Generate initial baselines** by running `npx playwright test tests/e2e/test_visual.spec.js --update-snapshots`.
+
+4. **Add npm script** — `"test:visual": "npx playwright test tests/e2e/test_visual.spec.js"` in `package.json`.
+
+5. **Check baseline PNGs into git** in `tests/e2e/test_visual.spec.js-snapshots/` (Playwright's default location).
+
+6. **Update `tests/run_tests.sh`** to include the visual tests (or keep them separate since they're slower).
+
+**Question: Should visual tests run as part of the main `npm run test:e2e` suite, or as a separate `npm run test:visual` command? Separate is nice because visual tests are slower and baselines need explicit updating when the UI intentionally changes.**
+
+Answer: separate.
 
 ---
 

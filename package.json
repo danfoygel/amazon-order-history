@@ -6,7 +6,8 @@
   "scripts": {
     "test": "vitest run tests/js/",
     "test:watch": "vitest tests/js/",
-    "test:e2e": "npx playwright test",
+    "test:e2e": "npx playwright test tests/e2e/test_web_view.spec.js",
+    "test:visual": "npx playwright test tests/e2e/test_visual.spec.js",
     "test:all": "bash tests/run_tests.sh"
   },
   "devDependencies": {
