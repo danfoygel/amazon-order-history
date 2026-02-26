@@ -551,8 +551,8 @@ _STATUS_KEYWORDS = [
 
 
 def _load_known_status_issues() -> set[str]:
-    """Load item IDs from known_status_issues.json (if it exists)."""
-    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "known_status_issues.json")
+    """Load item IDs from data/known_status_issues.json (if it exists)."""
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "known_status_issues.json")
     try:
         with open(p, encoding="utf-8") as f:
             return set(json.load(f).get("items", []))

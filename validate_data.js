@@ -8,8 +8,8 @@
 // runs the same deriveStatus / effectiveStatus / parseExpectedDelivery logic
 // used by the browser app.  Prints errors for anything that cannot be parsed.
 //
-// Items listed in known_status_issues.json are silently skipped (old orders
-// with degraded data that cannot be fixed).
+// Items listed in data/known_status_issues.json are silently skipped (old
+// orders with degraded data that cannot be fixed).
 //
 // Usage:
 //   node validate_data.js [data_dir]
@@ -44,10 +44,10 @@ const VALID_RETURN_STATUSES = new Set([
 ]);
 
 // ---------------------------------------------------------------------------
-// Load the known-issues allowlist (lives next to this script).
+// Load the known-issues allowlist (lives in the data directory).
 // ---------------------------------------------------------------------------
-function loadKnownIssues() {
-  const p = path.join(__dirname, "known_status_issues.json");
+function loadKnownIssues(dataDir) {
+  const p = path.join(dataDir, "known_status_issues.json");
   try {
     const data = JSON.parse(fs.readFileSync(p, "utf-8"));
     return new Set(data.items || []);
@@ -145,7 +145,7 @@ function main() {
     process.exit(1);
   }
 
-  const knownIssues = loadKnownIssues();
+  const knownIssues = loadKnownIssues(dataDir);
 
   // Discover year files and sort in reverse chronological order
   const yearFiles = fs.readdirSync(dataDir)
@@ -214,9 +214,12 @@ function main() {
   // Summary
   console.log("");
   console.log(`Total: ${totalItems} items across ${yearFiles.length} files`);
-  console.log("Status distribution:", statusCounts);
+  console.log("Status distribution:");
+  for (const [status, count] of Object.entries(statusCounts)) {
+    console.log(`  "${status}": ${count}`);
+  }
   if (totalSkipped > 0) {
-    console.log(`(${totalSkipped} known issue(s) skipped — see known_status_issues.json)`);
+    console.log(`(${totalSkipped} known issue(s) skipped — see data/known_status_issues.json)`);
   }
 
   if (totalErrors > 0) {
