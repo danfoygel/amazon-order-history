@@ -4,7 +4,7 @@
 // order_logic.js — Pure logic functions for the Order History app.
 //
 // Single source of truth for status derivation, sorting, formatting, and
-// display helpers.  Rules are loaded from status_rules.json (also used by
+// display helpers.  Rules are loaded from status_rules.js (shared with
 // fetch_orders.py).
 //
 // Browser: loaded as a plain <script> before app.js; functions become globals.
@@ -15,13 +15,8 @@
 // Status rules + known-issue overrides
 // ---------------------------------------------------------------------------
 const _rulesData = (typeof require !== "undefined")
-  ? require("./status_rules.json")
-  : (function() {
-      var xhr = new XMLHttpRequest();
-      xhr.open("GET", "status_rules.json", false);
-      xhr.send();
-      return JSON.parse(xhr.responseText);
-    })();
+  ? require("./status_rules.js")
+  : STATUS_RULES_DATA;  // global set by status_rules.js <script> tag
 
 const STATUS_RULES = _rulesData.rules;
 const ASSUME_DELIVERED_AFTER_DAYS = _rulesData.assume_delivered_after_days;

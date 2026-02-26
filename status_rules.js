@@ -1,5 +1,13 @@
-{
-  "_comment": "Shared status derivation rules used by order_logic.js, validate_data.js, and fetch_orders.py. Each entry maps a lowercase substring pattern to a derived status category.",
+// Shared status derivation rules used by order_logic.js, validate_data.js,
+// and fetch_orders.py.  Each entry maps a lowercase substring pattern to a
+// derived status category.
+//
+// Browser: loaded as a <script> tag; STATUS_RULES_DATA becomes a global.
+// Node.js: loaded via require(); exported on module.exports.
+// Python:  parsed by extracting the JSON between the marker comments.
+
+// --- BEGIN JSON ---
+var STATUS_RULES_DATA = {
   "assume_delivered_after_days": 90,
   "rules": [
     ["cancelled",              "Cancelled"],
@@ -26,4 +34,9 @@
     ["order placed",           "Ordered"],
     ["payment pending",        "Ordered"]
   ]
+};
+// --- END JSON ---
+
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = STATUS_RULES_DATA;
 }
