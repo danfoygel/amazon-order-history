@@ -1,0 +1,16 @@
+{
+  "name": "order-history",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Amazon order history viewer",
+  "scripts": {
+    "test": "vitest run tests/js/",
+    "test:watch": "vitest tests/js/",
+    "test:e2e": "npx playwright test",
+    "test:all": "bash tests/run_tests.sh"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.2",
+    "vitest": "^4.0.18"
+  }
+}
