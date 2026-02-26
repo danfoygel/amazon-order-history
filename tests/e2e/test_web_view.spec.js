@@ -121,25 +121,25 @@ test.describe('Initial load (2025 data only)', () => {
     await loadApp(page);
     await clickTab(page, 'Return Started');
     expect(await cardCount(page)).toBe(2);
-    // Verify items 7 (Headphones) and 8 (Keyboard) are present.
-    await expect(page.locator('.item-card', { hasText: 'Headphones' })).toBeVisible();
-    await expect(page.locator('.item-card', { hasText: 'Keyboard' })).toBeVisible();
-    // Monitor Arm (item 9) should NOT be here — it's demoted to Delivered.
-    await expect(page.locator('.item-card', { hasText: 'Monitor Arm' })).not.toBeVisible();
+    // Verify items 7 (Pickle) and 8 (Panasonic) are present.
+    await expect(page.locator('.item-card', { hasText: 'Pickle' })).toBeVisible();
+    await expect(page.locator('.item-card', { hasText: 'Panasonic' })).toBeVisible();
+    // Kayak Hoists (item 9) should NOT be here — it's demoted to Delivered.
+    await expect(page.locator('.item-card', { hasText: 'Kayak' })).not.toBeVisible();
   });
 
   test('Replacement Ordered tab shows 1 card', async ({ page }) => {
     await loadApp(page);
     await clickTab(page, 'Replacement Ordered');
     expect(await cardCount(page)).toBe(1);
-    await expect(page.locator('.item-card', { hasText: 'Replacement Battery' })).toBeVisible();
+    await expect(page.locator('.item-card', { hasText: 'Hazmat' })).toBeVisible();
   });
 
   test('Cancelled tab shows 1 card', async ({ page }) => {
     await loadApp(page);
     await clickTab(page, 'Cancelled');
     expect(await cardCount(page)).toBe(1);
-    await expect(page.locator('.item-card', { hasText: 'Old Charger' })).toBeVisible();
+    await expect(page.locator('.item-card', { hasText: 'Sewing Needles' })).toBeVisible();
   });
 });
 
@@ -163,7 +163,7 @@ test.describe('Load all years', () => {
     // Tab counts should update.
     expect(await tabCount(page, 'all')).toBe(20);
     expect(await tabCount(page, 'Delivered')).toBe(10);
-    // Decide should include Webcam (item 20) now.
+    // Decide should include Swim Fins (item 20) now.
     expect(await tabCount(page, 'decide')).toBe(4);
     // Other counts unchanged.
     expect(await tabCount(page, 'Shipped')).toBe(2);
@@ -181,37 +181,37 @@ test.describe('Load all years', () => {
 
 test.describe('Search filtering', () => {
 
-  test('searching for "Coffee" shows only Coffee Beans', async ({ page }) => {
+  test('searching for "Pickle" shows only Emotional Support Pickle', async ({ page }) => {
     await loadApp(page);
     await clickTab(page, 'all');
-    await page.fill('#search-input', 'Coffee');
+    await page.fill('#search-input', 'Pickle');
     await page.waitForTimeout(300);
     expect(await cardCount(page)).toBe(1);
-    await expect(page.locator('.item-card', { hasText: 'Coffee Beans' })).toBeVisible();
+    await expect(page.locator('.item-card', { hasText: 'Pickle' })).toBeVisible();
   });
 
   test('searching by order ID shows matching item', async ({ page }) => {
     await loadApp(page);
     await clickTab(page, 'all');
-    await page.fill('#search-input', 'TEST-ORDER-5');
+    await page.fill('#search-input', '114-4948746-6648245');
     await page.waitForTimeout(300);
     expect(await cardCount(page)).toBe(1);
-    await expect(page.locator('.item-card', { hasText: 'Laptop Stand' })).toBeVisible();
+    await expect(page.locator('.item-card', { hasText: 'Punching Bag' })).toBeVisible();
   });
 
   test('searching by ASIN shows matching item', async ({ page }) => {
     await loadApp(page);
     await clickTab(page, 'all');
-    await page.fill('#search-input', 'B00TEST0012');
+    await page.fill('#search-input', 'B019PGG1AC');
     await page.waitForTimeout(300);
     expect(await cardCount(page)).toBe(1);
-    await expect(page.locator('.item-card', { hasText: 'Book' })).toBeVisible();
+    await expect(page.locator('.item-card', { hasText: 'Jack Chain' })).toBeVisible();
   });
 
   test('clearing search restores all items', async ({ page }) => {
     await loadApp(page);
     await clickTab(page, 'all');
-    await page.fill('#search-input', 'Coffee');
+    await page.fill('#search-input', 'Pickle');
     await page.waitForTimeout(300);
     expect(await cardCount(page)).toBe(1);
     await page.fill('#search-input', '');
@@ -228,9 +228,9 @@ test.describe('Subscribe & Save filter', () => {
     await page.locator('#sns-filter').check();
     await page.waitForTimeout(300);
     expect(await cardCount(page)).toBe(3);
-    await expect(page.locator('.item-card', { hasText: 'Coffee Beans' })).toBeVisible();
-    await expect(page.locator('.item-card', { hasText: 'Protein Powder' })).toBeVisible();
-    await expect(page.locator('.item-card', { hasText: 'Paper Towels' })).toBeVisible();
+    await expect(page.locator('.item-card', { hasText: 'Rechargeable' })).toBeVisible();
+    await expect(page.locator('.item-card', { hasText: 'Hanukkah' })).toBeVisible();
+    await expect(page.locator('.item-card', { hasText: 'Pistachio' })).toBeVisible();
   });
 
   test('unchecking S&S restores full list', async ({ page }) => {
@@ -256,36 +256,36 @@ test.describe('Status badges', () => {
   test('Delivered items show "Delivered" badge', async ({ page }) => {
     await loadApp(page);
     await clickTab(page, 'Delivered');
-    // Check that the Wireless Mouse card has a Delivered badge.
-    const card = page.locator('.item-card', { hasText: 'Wireless Mouse' });
+    // Check that the DEWALT Cutting Wheel card has a Delivered badge.
+    const card = page.locator('.item-card', { hasText: 'DEWALT' });
     await expect(card.locator('.badge-delivered')).toHaveText('Delivered');
   });
 
   test('Shipped items show "Shipped" badge', async ({ page }) => {
     await loadApp(page);
     await clickTab(page, 'Shipped');
-    const card = page.locator('.item-card', { hasText: 'Laptop Stand' });
+    const card = page.locator('.item-card', { hasText: 'Punching Bag' });
     await expect(card.locator('.badge-in-transit')).toHaveText('Shipped');
   });
 
   test('Ordered items show "Ordered" badge', async ({ page }) => {
     await loadApp(page);
     await clickTab(page, 'Ordered');
-    const card = page.locator('.item-card', { hasText: 'Water Bottle' });
+    const card = page.locator('.item-card', { hasText: 'Nozzle Cleaning' });
     await expect(card.locator('.badge-pending')).toHaveText('Ordered');
   });
 
   test('Cancelled items show "Cancelled" badge', async ({ page }) => {
     await loadApp(page);
     await clickTab(page, 'Cancelled');
-    const card = page.locator('.item-card', { hasText: 'Old Charger' });
+    const card = page.locator('.item-card', { hasText: 'Sewing Needles' });
     await expect(card.locator('.badge-cancelled')).toHaveText('Cancelled');
   });
 
   test('Replacement Ordered items show "Replacement" badge', async ({ page }) => {
     await loadApp(page);
     await clickTab(page, 'Replacement Ordered');
-    const card = page.locator('.item-card', { hasText: 'Replacement Battery' });
+    const card = page.locator('.item-card', { hasText: 'Hazmat' });
     await expect(card.locator('.badge-replacement')).toHaveText('Replacement');
   });
 });
@@ -295,21 +295,21 @@ test.describe('Return policy icons', () => {
   test('free_or_replace items show free-returns icon', async ({ page }) => {
     await loadApp(page);
     await clickTab(page, 'Delivered');
-    const card = page.locator('.item-card', { hasText: 'Wireless Mouse' });
+    const card = page.locator('.item-card', { hasText: 'DEWALT' });
     await expect(card.locator('.badge-free-returns')).toBeVisible();
   });
 
   test('non_returnable items show no-return icon', async ({ page }) => {
     await loadApp(page);
     await clickTab(page, 'Delivered');
-    const card = page.locator('.item-card', { hasText: 'USB Cable' });
+    const card = page.locator('.item-card', { hasText: 'Luxardo' });
     await expect(card.locator('.badge-no-return')).toBeVisible();
   });
 
   test('return_only items show return-only icon', async ({ page }) => {
     await loadApp(page);
     await clickTab(page, 'Delivered');
-    const card = page.locator('.item-card', { hasText: 'Phone Case' });
+    const card = page.locator('.item-card', { hasText: 'Furniture Glides' });
     await expect(card.locator('.badge-return-only')).toBeVisible();
   });
 });
@@ -430,18 +430,18 @@ test.describe('Keep button', () => {
   });
 });
 
-test.describe('Demoted Return Started item (Monitor Arm)', () => {
+test.describe('Demoted Return Started item (Kayak Hoists)', () => {
 
-  test('Monitor Arm appears in Delivered tab, not Return Started', async ({ page }) => {
+  test('Kayak Hoists appears in Delivered tab, not Return Started', async ({ page }) => {
     await loadApp(page);
 
     // Should be in Delivered.
     await clickTab(page, 'Delivered');
-    await expect(page.locator('.item-card', { hasText: 'Monitor Arm' })).toBeVisible();
+    await expect(page.locator('.item-card', { hasText: 'Kayak' })).toBeVisible();
 
     // Should NOT be in Return Started.
     await clickTab(page, 'Return Started');
-    await expect(page.locator('.item-card', { hasText: 'Monitor Arm' })).not.toBeVisible();
+    await expect(page.locator('.item-card', { hasText: 'Kayak' })).not.toBeVisible();
   });
 });
 
@@ -450,16 +450,16 @@ test.describe('Card content', () => {
   test('card shows price and quantity', async ({ page }) => {
     await loadApp(page);
     await clickTab(page, 'Shipped');
-    const card = page.locator('.item-card', { hasText: 'Laptop Stand' });
-    // Laptop Stand: $25.00 x 2
-    await expect(card.locator('.price')).toContainText('$25.00');
+    const card = page.locator('.item-card', { hasText: 'Punching Bag' });
+    // Punching Bag: $36.44 x 2
+    await expect(card.locator('.price')).toContainText('$36.44');
     await expect(card.locator('.price')).toContainText('\u00d7 2');
   });
 
   test('card shows order date', async ({ page }) => {
     await loadApp(page);
     await clickTab(page, 'all');
-    const card = page.locator('.item-card', { hasText: 'Wireless Mouse' });
+    const card = page.locator('.item-card', { hasText: 'DEWALT' });
     // Order date: Jan 1, 2025
     await expect(card).toContainText('Jan 1, 2025');
   });
@@ -467,14 +467,14 @@ test.describe('Card content', () => {
   test('S&S badge appears on S&S items', async ({ page }) => {
     await loadApp(page);
     await clickTab(page, 'Delivered');
-    const card = page.locator('.item-card', { hasText: 'Coffee Beans' });
+    const card = page.locator('.item-card', { hasText: 'Rechargeable' });
     await expect(card.locator('.badge-sns')).toBeVisible();
   });
 
   test('S&S badge does not appear on non-S&S items', async ({ page }) => {
     await loadApp(page);
     await clickTab(page, 'Delivered');
-    const card = page.locator('.item-card', { hasText: 'Wireless Mouse' });
+    const card = page.locator('.item-card', { hasText: 'DEWALT' });
     await expect(card.locator('.badge-sns')).not.toBeVisible();
   });
 });
@@ -484,7 +484,7 @@ test.describe('Return window badges', () => {
   test('open return window shows return-by badge', async ({ page }) => {
     await loadApp(page);
     await clickTab(page, 'Delivered');
-    const card = page.locator('.item-card', { hasText: 'Wireless Mouse' });
+    const card = page.locator('.item-card', { hasText: 'DEWALT' });
     // return_window_end=2099-12-31 — should show "Return by ..." with ok or warn badge.
     const badge = card.locator('.return-badge-ok, .return-badge-warn');
     await expect(badge).toBeVisible();
@@ -493,7 +493,7 @@ test.describe('Return window badges', () => {
   test('closed return window shows closed badge', async ({ page }) => {
     await loadApp(page);
     await clickTab(page, 'Delivered');
-    const card = page.locator('.item-card', { hasText: 'Phone Case' });
+    const card = page.locator('.item-card', { hasText: 'Furniture Glides' });
     // return_window_end=2020-01-01 — closed.
     await expect(card.locator('.return-badge-closed')).toBeVisible();
   });
@@ -501,7 +501,7 @@ test.describe('Return window badges', () => {
   test('Mail Back items with unknown deadline show warning', async ({ page }) => {
     await loadApp(page);
     await clickTab(page, 'Return Started');
-    const card = page.locator('.item-card', { hasText: 'Keyboard' });
+    const card = page.locator('.item-card', { hasText: 'Panasonic' });
     // return_window_end=null → "Mail back — deadline unknown" warning badge.
     const badge = card.locator('.return-badge-warn');
     await expect(badge).toBeVisible();
