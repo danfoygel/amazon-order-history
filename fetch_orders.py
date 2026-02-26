@@ -793,7 +793,12 @@ class FetchProgress:
         else:
             print(f"  [API] paging complete: {total} orders to fetch details for  [{self._elapsed()}]")
 
-    def finish(self):
+    def finish(self) -> list[str]:
+        """Stop progress display and restore patched methods.
+
+        Returns the list of order numbers that the library flagged as
+        unsupported (Fresh / Whole Foods / physical-store orders).
+        """
         # Signal and join the timer thread first so it can't race with the
         # final line write.  Then write the final line under the stdout lock
         # so any concurrent stderr warning handler can't interleave either.
@@ -825,6 +830,7 @@ class FetchProgress:
         # Restore patched methods
         self._ao._build_order = self._original_build_order
         self._ao._build_orders_async = self._original_build
+        return list(self._skipped_orders)
 
 
 # ---------------------------------------------------------------------------
@@ -836,9 +842,13 @@ def _fetch_year_with_retry(
     year: int,
     max_retries: int = 3,
     verbose: bool = False,
-) -> list:
+) -> tuple[list, set[str]]:
     """
     Fetch a single year of orders with retry on network errors.
+
+    Returns (orders, skipped_order_ids) where *skipped_order_ids* is the set
+    of order numbers the library flagged as unsupported (Fresh / Whole Foods /
+    physical-store orders).
 
     The amazonorders library fires one HTTP request per order in parallel
     (full_details=True). On macOS this burst can overwhelm the DNS resolver,
@@ -851,10 +861,10 @@ def _fetch_year_with_retry(
         progress = FetchProgress(amazon_orders, f"year {year}", verbose=verbose)
         try:
             orders = amazon_orders.get_order_history(year=year, full_details=True)
-            progress.finish()
+            skipped = progress.finish()
             if verbose:
                 print(f"  [API] → {len(orders)} orders returned")
-            return orders
+            return orders, set(skipped)
         except RequestsConnectionError as exc:
             progress.finish()
             if attempt < max_retries:
@@ -877,17 +887,19 @@ def _fetch_year_with_retry(
             # so the exception is not interleaved with \r progress lines.
             progress.finish()
             raise
-    return []   # unreachable, keeps type-checkers happy
+    return [], set()   # unreachable, keeps type-checkers happy
 
 
 def _fetch_incremental_with_retry(
     amazon_orders,
     max_retries: int = 3,
     verbose: bool = False,
-) -> list:
+) -> tuple[list, set[str]]:
     """
     Fetch the last 3 months of orders using the library's native time_filter,
     with retry on network errors.
+
+    Returns (orders, skipped_order_ids) — see _fetch_year_with_retry.
     """
     if verbose:
         print('  [API] get_order_history(time_filter="months-3", full_details=True)')
@@ -897,10 +909,10 @@ def _fetch_incremental_with_retry(
             orders = amazon_orders.get_order_history(
                 time_filter="months-3", full_details=True
             )
-            progress.finish()
+            skipped = progress.finish()
             if verbose:
                 print(f"  [API] → {len(orders)} orders returned")
-            return orders
+            return orders, set(skipped)
         except RequestsConnectionError as exc:
             progress.finish()
             if attempt < max_retries:
@@ -921,7 +933,7 @@ def _fetch_incremental_with_retry(
         except Exception:
             progress.finish()
             raise
-    return []   # unreachable
+    return [], set()   # unreachable
 
 
 # ---------------------------------------------------------------------------
@@ -977,7 +989,9 @@ def main():
         existing_items = load_existing_items(year)
         existing_by_id = {i["item_id"]: i for i in existing_items}
         print(f"Fetching orders for {year}...")
-        raw_orders = _fetch_year_with_retry(amazon_orders, year, verbose=verbose)
+        raw_orders, skipped_ids = _fetch_year_with_retry(amazon_orders, year, verbose=verbose)
+        if skipped_ids:
+            raw_orders = [o for o in raw_orders if o.order_number not in skipped_ids]
         print(f"  Found {len(raw_orders)} orders.")
         items = build_items_from_orders(raw_orders)
         if verbose:
@@ -992,7 +1006,9 @@ def main():
         # ------------------------------------------------------------------
         print("Mode: incremental (last 3 months)")
         print("Fetching orders for the last 3 months...")
-        raw_orders = _fetch_incremental_with_retry(amazon_orders, verbose=verbose)
+        raw_orders, skipped_ids = _fetch_incremental_with_retry(amazon_orders, verbose=verbose)
+        if skipped_ids:
+            raw_orders = [o for o in raw_orders if o.order_number not in skipped_ids]
         print(f"  Found {len(raw_orders)} orders.")
         new_items = build_items_from_orders(raw_orders)
         if verbose:

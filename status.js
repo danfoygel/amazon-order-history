@@ -13,6 +13,8 @@ const STATUS_RULES = [
   ["return complete",        "Return Complete"],
   ["return received",        "Return Complete"],
   ["replacement complete",   "Return Complete"],
+  ["return request approved", "Return Started"],
+  ["return requested",       "Return Started"],
   ["return started",         "Return Started"],
   ["return in transit",      "Return in Transit"],
   ["refunded",               "Return in Transit"],
