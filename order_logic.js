@@ -11,10 +11,18 @@
 // ---------------------------------------------------------------------------
 // Status derivation — rules loaded from status_rules.json (single source of
 // truth shared with status.js, validate_data.js, and fetch_orders.py).
+//
+// In the browser, status.js is loaded after this script and provides the
+// authoritative STATUS_RULES, ASSUME_DELIVERED_AFTER_DAYS, deriveStatus, and
+// effectiveStatus.  In Node.js (tests), this script is the sole provider.
 // ---------------------------------------------------------------------------
-const _rulesData = require("./status_rules.json");
-const STATUS_RULES = _rulesData.rules;
-const ASSUME_DELIVERED_AFTER_DAYS = _rulesData.assume_delivered_after_days;
+if (typeof require !== "undefined") {
+  (function() {
+    var rd = require("./status_rules.json");
+    globalThis.STATUS_RULES = rd.rules;
+    globalThis.ASSUME_DELIVERED_AFTER_DAYS = rd.assume_delivered_after_days;
+  })();
+}
 
 // Returns true only when the tracking URL contains a shipmentId parameter,
 // which Amazon adds once a package has been assigned to a carrier.
@@ -303,38 +311,6 @@ function initialYears(manifest) {
 }
 
 // ---------------------------------------------------------------------------
-// Graph constants
-// ---------------------------------------------------------------------------
-
-const GRAPH_STATUSES = [
-  "Ordered",
-  "Shipped",
-  "Delivered",
-  "Replacement Ordered",
-  "Return Started",
-  "Return in Transit",
-  "Return Complete",
-  "Cancelled",
-];
-
-// Display labels for chart legends (where internal status name differs)
-const GRAPH_STATUS_LABELS = {
-  "Replacement Ordered": "Replacement",
-};
-
-// Colors aligned with existing badge palette in style.css
-const GRAPH_STATUS_COLORS = {
-  "Ordered":             "#6b7280",   // pending gray
-  "Shipped":             "#2563eb",   // blue
-  "Delivered":           "#16a34a",   // green
-  "Replacement Ordered": "#6d28d9",   // purple
-  "Return Started":      "#d97706",   // amber
-  "Return in Transit":   "#06b6d4",   // cyan (clearly distinct from blue)
-  "Return Complete":     "#9ca3af",   // muted gray
-  "Cancelled":           "#dc2626",   // red
-};
-
-// ---------------------------------------------------------------------------
 // Node.js exports (conditional — only active in Node, no-op in browser)
 // ---------------------------------------------------------------------------
 if (typeof module !== "undefined" && module.exports) {
@@ -343,9 +319,6 @@ if (typeof module !== "undefined" && module.exports) {
     ASSUME_DELIVERED_AFTER_DAYS,
     WEEKDAY_NAMES,
     MONTH_NAMES,
-    GRAPH_STATUSES,
-    GRAPH_STATUS_LABELS,
-    GRAPH_STATUS_COLORS,
     hasShipmentId,
     deriveStatus,
     daysSince,

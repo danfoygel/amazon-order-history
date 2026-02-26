@@ -73,59 +73,18 @@ function deriveStatus(deliveryStatus, orderDate, trackingUrl) {
   return "Unknown";
 }
 
-function daysSince(isoDate) {
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  return Math.floor((today - new Date(isoDate + "T00:00:00")) / 86400000);
-}
-
-const WEEKDAY_NAMES = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
-const MONTH_NAMES = ["january", "february", "march", "april", "may", "june",
-                     "july", "august", "september", "october", "november", "december"];
-
-function parseExpectedDelivery(deliveryStatus) {
-  if (!deliveryStatus) return null;
-  const s = deliveryStatus.trim().toLowerCase();
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-
-  if (s.includes("today") || s.includes("out for delivery")) {
-    return toIso(today);
-  }
-  if (s.includes("tomorrow")) {
-    return toIso(new Date(today.getTime() + 86400000));
-  }
-
-  // Named weekday: "Arriving Saturday"
-  for (let i = 0; i < WEEKDAY_NAMES.length; i++) {
-    if (s.includes(WEEKDAY_NAMES[i])) {
-      let daysAhead = (i - today.getDay() + 7) % 7;
-      if (daysAhead === 0) daysAhead = 7;
-      return toIso(new Date(today.getTime() + daysAhead * 86400000));
-    }
-  }
-
-  // Month + day: "Now arriving February 28" or "Arriving Feb 22"
-  for (let i = 0; i < MONTH_NAMES.length; i++) {
-    const abbr = MONTH_NAMES[i].slice(0, 3);
-    if (s.includes(abbr)) {
-      const m = s.match(new RegExp(abbr + "\\w*\\s+(\\d{1,2})"));
-      if (m) {
-        const day = parseInt(m[1], 10);
-        const month = i; // 0-indexed
-        let candidate = new Date(today.getFullYear(), month, day);
-        if (candidate < today) candidate = new Date(today.getFullYear() + 1, month, day);
-        return toIso(candidate);
-      }
-    }
-  }
-
-  return null;
-}
-
-function toIso(date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
+// In the browser, order_logic.js (loaded first) already provides daysSince,
+// WEEKDAY_NAMES, MONTH_NAMES, parseExpectedDelivery, and toIso as globals.
+// In Node.js (validate_data.js), order_logic.js is not pre-loaded, so we
+// pull them in here.  We use Object.assign to avoid var/const hoisting
+// conflicts with order_logic.js's const declarations in the browser.
+if (typeof require !== "undefined") {
+  Object.assign(globalThis, (function() {
+    var ol = require("./order_logic.js");
+    return { daysSince: ol.daysSince, WEEKDAY_NAMES: ol.WEEKDAY_NAMES,
+             MONTH_NAMES: ol.MONTH_NAMES, parseExpectedDelivery: ol.parseExpectedDelivery,
+             toIso: ol.toIso };
+  })());
 }
 
 function effectiveStatus(item) {
