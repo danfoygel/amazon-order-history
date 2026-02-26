@@ -544,10 +544,22 @@ def build_items_from_orders(orders: list) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 def _load_status_keywords() -> list[str]:
-    """Load STATUS_RULES patterns from status_rules.json (single source of truth)."""
-    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "status_rules.json")
+    """Load STATUS_RULES patterns from status_rules.js (single source of truth).
+
+    The JS file contains a JSON object between marker comments
+    ``// --- BEGIN JSON ---`` and ``// --- END JSON ---``.
+    """
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "status_rules.js")
     with open(p, encoding="utf-8") as f:
-        data = json.load(f)
+        text = f.read()
+    # Extract the JSON object assigned to STATUS_RULES_DATA
+    start = text.index("// --- BEGIN JSON ---")
+    end = text.index("// --- END JSON ---")
+    fragment = text[start:end]
+    # Strip the "var STATUS_RULES_DATA = " prefix to get pure JSON
+    json_start = fragment.index("{")
+    json_end = fragment.rindex("}") + 1
+    data = json.loads(fragment[json_start:json_end])
     return [pattern for pattern, _value in data["rules"]]
 
 _STATUS_KEYWORDS = _load_status_keywords()
