@@ -8,6 +8,9 @@
 // runs the same deriveStatus / effectiveStatus / parseExpectedDelivery logic
 // used by the browser app.  Prints errors for anything that cannot be parsed.
 //
+// Items listed in known_status_issues.json are silently skipped (old orders
+// with degraded data that cannot be fixed).
+//
 // Usage:
 //   node validate_data.js [data_dir]
 //
@@ -39,6 +42,19 @@ const VALID_RETURN_STATUSES = new Set([
   "none", "return_started", "return_in_transit", "return_complete",
   "replacement_ordered", "replacement_complete", null, undefined, "",
 ]);
+
+// ---------------------------------------------------------------------------
+// Load the known-issues allowlist (lives next to this script).
+// ---------------------------------------------------------------------------
+function loadKnownIssues() {
+  const p = path.join(__dirname, "known_status_issues.json");
+  try {
+    const data = JSON.parse(fs.readFileSync(p, "utf-8"));
+    return new Set(data.items || []);
+  } catch {
+    return new Set();
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Parse a data file.  Format: window.ORDER_DATA_YYYY = { ... };
@@ -129,6 +145,8 @@ function main() {
     process.exit(1);
   }
 
+  const knownIssues = loadKnownIssues();
+
   // Discover year files and sort in reverse chronological order
   const yearFiles = fs.readdirSync(dataDir)
     .filter(f => /^app_data_\d{4}\.js$/.test(f))
@@ -145,6 +163,7 @@ function main() {
 
   let totalItems = 0;
   let totalErrors = 0;
+  let totalSkipped = 0;
   const statusCounts = {};
 
   for (const file of yearFiles) {
@@ -162,6 +181,7 @@ function main() {
 
     const items = data.items || [];
     let yearErrors = 0;
+    let yearSkipped = 0;
 
     for (const item of items) {
       totalItems++;
@@ -170,23 +190,34 @@ function main() {
 
       const errors = validateItem(item, year);
       if (errors.length > 0) {
+        const id = item.item_id || item.order_id || "(unknown)";
+        if (knownIssues.has(id)) {
+          yearSkipped++;
+          totalSkipped++;
+          continue;
+        }
         yearErrors += errors.length;
         totalErrors += errors.length;
-        const id = item.item_id || item.order_id || "(unknown)";
         for (const err of errors) {
           console.error(`ERROR  ${year}  ${id}  ${err}`);
         }
       }
     }
 
-    const status = yearErrors > 0 ? `${yearErrors} error(s)` : "ok";
-    console.log(`${year}  ${items.length} items  ${status}`);
+    const parts = [`${items.length} items`];
+    if (yearErrors > 0) parts.push(`${yearErrors} error(s)`);
+    if (yearSkipped > 0) parts.push(`${yearSkipped} known issue(s) skipped`);
+    if (yearErrors === 0 && yearSkipped === 0) parts.push("ok");
+    console.log(`${year}  ${parts.join("  ")}`);
   }
 
   // Summary
   console.log("");
   console.log(`Total: ${totalItems} items across ${yearFiles.length} files`);
   console.log("Status distribution:", statusCounts);
+  if (totalSkipped > 0) {
+    console.log(`(${totalSkipped} known issue(s) skipped — see known_status_issues.json)`);
+  }
 
   if (totalErrors > 0) {
     console.log(`\n${totalErrors} error(s) found.`);

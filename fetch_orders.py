@@ -532,6 +532,60 @@ def build_items_from_orders(orders: list) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
+# Status validation — warn about delivery_status strings that don't match
+# any STATUS_RULE and aren't in the known-issues allowlist.
+# ---------------------------------------------------------------------------
+
+# Mirrors STATUS_RULES patterns from status.js (kept in sync manually).
+_STATUS_KEYWORDS = [
+    "cancelled", "canceled",
+    "return complete", "return received", "replacement complete",
+    "return request approved", "return requested", "return started",
+    "return in transit", "refunded", "refund issued",
+    "replacement ordered",
+    "delivered",
+    "out for delivery", "on the way", "not yet shipped", "shipped",
+    "in transit", "now arriving", "arriving",
+    "preparing for shipment", "order placed", "payment pending",
+]
+
+
+def _load_known_status_issues() -> set[str]:
+    """Load item IDs from known_status_issues.json (if it exists)."""
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "known_status_issues.json")
+    try:
+        with open(p, encoding="utf-8") as f:
+            return set(json.load(f).get("items", []))
+    except Exception:
+        return set()
+
+
+def warn_status_errors(items: list[dict]) -> None:
+    """Print warnings for items whose delivery_status is unrecognised.
+
+    Items listed in data/known_status_issues.json are silently skipped.
+    """
+    known = _load_known_status_issues()
+    warnings = []
+    for item in items:
+        raw = (item.get("delivery_status") or "").strip()
+        if not raw:
+            continue
+        low = raw.lower()
+        if any(k in low for k in _STATUS_KEYWORDS):
+            continue
+        item_id = item.get("item_id", item.get("order_id", "unknown"))
+        if item_id in known:
+            continue
+        warnings.append((item_id, raw))
+
+    if warnings:
+        print(f"  Warning: {len(warnings)} item(s) have unrecognised delivery_status:")
+        for item_id, raw in warnings:
+            print(f"    {item_id}  \"{raw}\"")
+
+
+# ---------------------------------------------------------------------------
 # File I/O
 # ---------------------------------------------------------------------------
 
@@ -996,6 +1050,7 @@ def main():
         items = build_items_from_orders(raw_orders)
         if verbose:
             print(f"  [summary] Built {len(items)} item records from {len(raw_orders)} orders")
+        warn_status_errors(items)
         enrich_items_with_asin_cache(items, session, verbose=verbose)
         _preserve_return_window(items, existing_by_id)
         write_output(items, year, email=email)
@@ -1013,6 +1068,7 @@ def main():
         new_items = build_items_from_orders(raw_orders)
         if verbose:
             print(f"  [summary] Built {len(new_items)} item records from {len(raw_orders)} orders")
+        warn_status_errors(new_items)
         enrich_items_with_asin_cache(new_items, session, verbose=verbose)
 
         # Partition new items by calendar year
