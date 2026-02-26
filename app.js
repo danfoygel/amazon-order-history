@@ -32,7 +32,11 @@ function toggleKept(item) {
 let keptIds = loadKept();
 
 // ---------------------------------------------------------------------------
-// Filtering (depends on global state: currentSnsOnly, isKept)
+// Status derivation — loaded from status.js (shared with validate_data.js)
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Filtering & sorting
 // ---------------------------------------------------------------------------
 function filterItems(items, tab, searchQuery) {
   const today = new Date();
@@ -81,6 +85,7 @@ function computeTabCounts(items) {
     Shipped: 0,
     Ordered: 0,
     Cancelled: 0,
+    Unknown: 0,
     "Return Started": 0,
     "Return in Transit": 0,
     "Return Complete": 0,
@@ -110,7 +115,135 @@ function renderTabCounts(items) {
     if (countEl && counts[filter] !== undefined) {
       countEl.textContent = counts[filter];
     }
+    // Only show the Unknown tab when there are items with that status
+    if (filter === "Unknown") {
+      btn.style.display = counts.Unknown > 0 ? "" : "none";
+    }
   });
+}
+
+// ---------------------------------------------------------------------------
+// Formatting helpers
+// ---------------------------------------------------------------------------
+function formatDate(isoStr) {
+  if (!isoStr) return "—";
+  const d = new Date(isoStr + "T00:00:00");
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+/** Format a date that's expected to be near today — omit the year and use
+ *  "yesterday" / "today" / "tomorrow" when applicable.  Used for arrival
+ *  estimates, return-by dates, and mail-back deadlines. */
+function formatDateNearby(isoStr) {
+  if (!isoStr) return "—";
+  const d = new Date(isoStr + "T00:00:00");
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const diffDays = Math.round((d - today) / 86400000);
+  if (diffDays === -1) return "yesterday";
+  if (diffDays === 0)  return "today";
+  if (diffDays === 1)  return "tomorrow";
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+function formatPrice(val) {
+  if (val === null || val === undefined) return "—";
+  return "$" + Number(val).toFixed(2);
+}
+
+function statusBadgeHtml(status) {
+  const map = {
+    "Delivered":           ["badge-delivered",      "Delivered"],
+    "Shipped":             ["badge-in-transit",      "Shipped"],
+    "Ordered":             ["badge-pending",         "Ordered"],
+    "Cancelled":           ["badge-cancelled",       "Cancelled"],
+    "Return Started":      ["badge-return-started",  "Return Started"],
+    "Return in Transit":   ["badge-return-transit",  "Return in Transit"],
+    "Return Complete":     ["badge-return-complete", "Return Complete"],
+    "Replacement Ordered": ["badge-replacement",     "Replacement"],
+    "Unknown":             ["badge-unknown",         "Unknown"],
+  };
+  const [cls, label] = map[status] || ["badge-pending", status || "Unknown"];
+  return `<span class="badge ${cls}">${label}</span>`;
+}
+
+function escHtml(str) {
+  return String(str ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function orderUrl(item) {
+  if (!item.order_id) return null;
+  return `https://www.amazon.com/gp/your-account/order-details?orderID=${encodeURIComponent(item.order_id)}`;
+}
+
+// effectiveStatus() is in status.js
+
+// ---------------------------------------------------------------------------
+// Return window badge (Delivered and Return Started items)
+// ---------------------------------------------------------------------------
+function returnWindowHtml(item) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const status = effectiveStatus(item);
+
+  if (status === "Delivered") {
+    if (!item.return_window_end) return "";
+    const end = new Date(item.return_window_end + "T00:00:00");
+    const daysLeft = Math.ceil((end - today) / (1000 * 60 * 60 * 24));
+    const dateStr = formatDateNearby(item.return_window_end);
+    const daysHint = (daysLeft >= 0 && daysLeft <= 7 && !["today", "tomorrow", "yesterday"].includes(dateStr))
+      ? ` (${daysLeft}d left)` : "";
+    if (daysLeft < 0) {
+      return `<span class="badge return-badge-closed">Return window closed</span>`;
+    }
+    if (daysLeft <= 7) {
+      return `<span class="badge return-badge-warn">⚠ Return by ${dateStr}${daysHint}</span>`;
+    }
+    return `<span class="badge return-badge-ok">Return by ${dateStr}</span>`;
+  }
+
+  if (status === "Return Started" || status === "Replacement Ordered") {
+    if (!item.return_window_end) return `<span class="badge return-badge-warn">⚠ Mail back — deadline unknown</span>`;
+    const end = new Date(item.return_window_end + "T00:00:00");
+    const daysLeft = Math.ceil((end - today) / (1000 * 60 * 60 * 24));
+    const dateStr = formatDateNearby(item.return_window_end);
+    const daysHint = (daysLeft >= 0 && daysLeft <= 7 && !["today", "tomorrow", "yesterday"].includes(dateStr))
+      ? ` (${daysLeft}d left)` : "";
+    if (daysLeft < 0) {
+      return `<span class="badge return-badge-overdue">Mail back by ${dateStr}</span>`;
+    }
+    if (daysLeft <= 7) {
+      return `<span class="badge return-badge-warn">⚠ Mail back by ${dateStr}${daysHint}</span>`;
+    }
+    return `<span class="badge return-badge-ok">Mail back by ${dateStr}</span>`;
+  }
+
+  return "";
+}
+
+// ---------------------------------------------------------------------------
+// Return policy icon
+// ---------------------------------------------------------------------------
+function returnPolicyIcon(item) {
+  const policy = item.return_policy;
+  if (policy === "free_or_replace") {
+    // Clockwise circular arrow — free returns
+    return `<span class="icon-badge badge-free-returns" title="Free returns"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></span>`;
+  }
+  if (policy === "non_returnable") {
+    // Circle with diagonal slash — non-returnable
+    return `<span class="icon-badge badge-no-return" title="Non-returnable"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg></span>`;
+  }
+  if (policy === "return_only") {
+    // Corner-return arrow — returns allowed (but not free)
+    return `<span class="icon-badge badge-return-only" title="Returns allowed"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg></span>`;
+  }
+  // null/missing: no icon shown
+  return "";
 }
 
 // ---------------------------------------------------------------------------
@@ -565,11 +698,11 @@ async function init() {
 // ---------------------------------------------------------------------------
 function logDiagnostics(items) {
   const statusCounts = {};
-  const deliverySamples = {};  // derived status → [delivery_status strings]
-  const unknownSamples  = [];  // delivery_status strings that fell through to default
+  const deliverySamples = {};  // effective status → [delivery_status strings]
+  const unknownSamples  = [];  // items whose effective status is "Unknown"
 
   for (const item of items) {
-    const s = deriveStatus(item.delivery_status, item.order_date, item.tracking_url);
+    const s = effectiveStatus(item);
     statusCounts[s] = (statusCounts[s] || 0) + 1;
 
     if (item.delivery_status) {
@@ -577,18 +710,8 @@ function logDiagnostics(items) {
       deliverySamples[s].add(item.delivery_status);
     }
 
-    // Flag items whose raw delivery_status doesn't match any known keyword
-    // and whose derived status is Delivered/Ordered (possible mis-classification).
-    if (item.delivery_status && (s === "Ordered" || s === "Delivered")) {
-      const raw = item.delivery_status.toLowerCase();
-      const knownKeywords = [
-        "cancelled", "canceled", "return", "refund", "replacement", "delivered",
-        "out for delivery", "on the way", "not yet shipped", "shipped", "in transit",
-        "now arriving", "arriving", "preparing", "order placed", "payment pending",
-      ];
-      if (!knownKeywords.some(k => raw.includes(k))) {
-        unknownSamples.push({ status: s, delivery_status: item.delivery_status });
-      }
+    if (s === "Unknown") {
+      unknownSamples.push({ item_id: item.item_id, delivery_status: item.delivery_status });
     }
   }
 
@@ -601,11 +724,11 @@ function logDiagnostics(items) {
   console.group("Order History Diagnostics");
   console.log(`Total items: ${items.length}`);
   console.table(statusCounts);
-  console.log("Sample raw delivery_status by derived status:", samples);
+  console.log("Sample raw delivery_status by effective status:", samples);
   if (unknownSamples.length) {
     console.warn(
-      `${unknownSamples.length} item(s) have unrecognised delivery_status strings ` +
-      `(check STATUS_RULES in app.js):`,
+      `${unknownSamples.length} item(s) have Unknown status ` +
+      `(check status_rules.json and data/known_status_issues.json):`,
       unknownSamples.slice(0, 20)
     );
   }
@@ -615,6 +738,42 @@ function logDiagnostics(items) {
 // ---------------------------------------------------------------------------
 // Graph modal — stacked area chart of items per status per year
 // ---------------------------------------------------------------------------
+
+const GRAPH_STATUSES = [
+  "Ordered",
+  "Shipped",
+  "Delivered",
+  "Replacement Ordered",
+  "Return Started",
+  "Return in Transit",
+  "Return Complete",
+  "Cancelled",
+  "Unknown",
+];
+
+// Returns GRAPH_STATUSES filtered to omit "Unknown" when there are none.
+function activeGraphStatuses() {
+  const hasUnknown = allItems.some(item => effectiveStatus(item) === "Unknown");
+  return hasUnknown ? GRAPH_STATUSES : GRAPH_STATUSES.filter(s => s !== "Unknown");
+}
+
+// Display labels for chart legends (where internal status name differs)
+const GRAPH_STATUS_LABELS = {
+  "Replacement Ordered": "Replacement",
+};
+
+// Colors aligned with existing badge palette in style.css
+const GRAPH_STATUS_COLORS = {
+  "Ordered":             "#6b7280",   // pending gray
+  "Shipped":             "#2563eb",   // blue
+  "Delivered":           "#16a34a",   // green
+  "Replacement Ordered": "#6d28d9",   // purple
+  "Return Started":      "#d97706",   // amber
+  "Return in Transit":   "#06b6d4",   // cyan (clearly distinct from blue)
+  "Return Complete":     "#9ca3af",   // muted gray
+  "Cancelled":           "#dc2626",   // red
+  "Unknown":             "#f97316",   // orange (warning)
+};
 
 let graphChartInstance = null;
 
@@ -632,7 +791,8 @@ function buildGraphData() {
   const years = Object.keys(byYear).sort();
   // Datasets ordered Cancelled→Ordered so bars stack with Cancelled at bottom, Ordered at top.
   // Legend uses reverse:true to display Ordered first (left) and Cancelled last (right).
-  const datasets = [...GRAPH_STATUSES].reverse().map(status => ({
+  const statuses = activeGraphStatuses();
+  const datasets = [...statuses].reverse().map(status => ({
     label: GRAPH_STATUS_LABELS[status] || status,
     data: years.map(y => byYear[y][status] || 0),
     backgroundColor: GRAPH_STATUS_COLORS[status],
@@ -673,7 +833,8 @@ function buildMonthlyGraphData() {
   }
 
   // Same stack order as the annual chart: Cancelled at bottom, Ordered at top.
-  const datasets = [...GRAPH_STATUSES].reverse().map(status => ({
+  const statuses = activeGraphStatuses();
+  const datasets = [...statuses].reverse().map(status => ({
     label: GRAPH_STATUS_LABELS[status] || status,
     data: monthKeys.map(k => (byMonth[k] && byMonth[k][status]) || 0),
     backgroundColor: GRAPH_STATUS_COLORS[status],

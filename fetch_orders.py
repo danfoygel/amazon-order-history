@@ -167,25 +167,32 @@ def extract_return_info(item) -> tuple[str | None, str | None]:
                            (characteristic of food, consumables, and similar
                            non-returnable categories on the order page)
       None               — ambiguous (no return span but connections div has
-                           content, e.g. expired window on a normal item)
+                           content), or return window is closed (date is still
+                           captured but policy can't be determined from closed text)
     """
     parsed = getattr(item, "parsed", None)
     if parsed is None:
         return None, None
 
     # Amazon's current HTML puts return eligibility in a span.a-size-small that
-    # contains the text "Eligible through".  The older data-component selector
+    # contains "Eligible through" (open window) or "Return window closed on"
+    # (expired window).  The older data-component selector
     # (data-component='itemReturnEligibility') is no longer used by Amazon.
     for span in parsed.select("span.a-size-small"):
         text = span.get_text(" ", strip=True)
         lower = text.lower()
-        if "eligible through" not in lower:
-            continue
-        date_str = _parse_return_date(text)
-        if "return or replace items" in lower:
-            return date_str, "free_or_replace"
-        else:
-            return date_str, "return_only"
+        if "eligible through" in lower:
+            date_str = _parse_return_date(text)
+            if "return or replace items" in lower:
+                return date_str, "free_or_replace"
+            else:
+                return date_str, "return_only"
+        if "return window closed" in lower:
+            date_str = _parse_return_date(text)
+            # Window is closed — we know the item was returnable, but we can't
+            # distinguish free_or_replace vs return_only from the closed text.
+            # Use None for policy so the ASIN cache can provide the real answer.
+            return date_str, None
 
     # No return span — check whether the item-level connections div is empty.
     # A completely empty div (no Buy-it-again, no return buttons) is the pattern
@@ -194,7 +201,7 @@ def extract_return_info(item) -> tuple[str | None, str | None]:
     if connections is not None and not connections.get_text(strip=True):
         return None, "non_returnable"
 
-    return None, None  # ambiguous: expired window or unknown
+    return None, None  # ambiguous: no return info found
 
 
 # ---------------------------------------------------------------------------
@@ -532,6 +539,59 @@ def build_items_from_orders(orders: list) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
+# Status validation — warn about delivery_status strings that don't match
+# any STATUS_RULE and aren't in the known-issues allowlist.
+# ---------------------------------------------------------------------------
+
+def _load_status_keywords() -> list[str]:
+    """Load STATUS_RULES patterns from status_rules.json (single source of truth)."""
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "status_rules.json")
+    with open(p, encoding="utf-8") as f:
+        data = json.load(f)
+    return [pattern for pattern, _value in data["rules"]]
+
+_STATUS_KEYWORDS = _load_status_keywords()
+
+
+def _load_known_status_issues() -> set[str]:
+    """Load item IDs from data/known_status_issues.json (if it exists)."""
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "known_status_issues.json")
+    try:
+        with open(p, encoding="utf-8") as f:
+            items = json.load(f).get("items", {})
+            if isinstance(items, dict):
+                return set(items.keys())
+            return set(items)
+    except Exception:
+        return set()
+
+
+def warn_status_errors(items: list[dict]) -> None:
+    """Print warnings for items whose delivery_status is unrecognised.
+
+    Items listed in data/known_status_issues.json are silently skipped.
+    """
+    known = _load_known_status_issues()
+    warnings = []
+    for item in items:
+        raw = (item.get("delivery_status") or "").strip()
+        if not raw:
+            continue
+        low = raw.lower()
+        if any(k in low for k in _STATUS_KEYWORDS):
+            continue
+        item_id = item.get("item_id", item.get("order_id", "unknown"))
+        if item_id in known:
+            continue
+        warnings.append((item_id, raw))
+
+    if warnings:
+        print(f"  Warning: {len(warnings)} item(s) have unrecognised delivery_status:")
+        for item_id, raw in warnings:
+            print(f"    {item_id}  \"{raw}\"")
+
+
+# ---------------------------------------------------------------------------
 # File I/O
 # ---------------------------------------------------------------------------
 
@@ -793,7 +853,12 @@ class FetchProgress:
         else:
             print(f"  [API] paging complete: {total} orders to fetch details for  [{self._elapsed()}]")
 
-    def finish(self):
+    def finish(self) -> list[str]:
+        """Stop progress display and restore patched methods.
+
+        Returns the list of order numbers that the library flagged as
+        unsupported (Fresh / Whole Foods / physical-store orders).
+        """
         # Signal and join the timer thread first so it can't race with the
         # final line write.  Then write the final line under the stdout lock
         # so any concurrent stderr warning handler can't interleave either.
@@ -825,6 +890,7 @@ class FetchProgress:
         # Restore patched methods
         self._ao._build_order = self._original_build_order
         self._ao._build_orders_async = self._original_build
+        return list(self._skipped_orders)
 
 
 # ---------------------------------------------------------------------------
@@ -836,9 +902,13 @@ def _fetch_year_with_retry(
     year: int,
     max_retries: int = 3,
     verbose: bool = False,
-) -> list:
+) -> tuple[list, set[str]]:
     """
     Fetch a single year of orders with retry on network errors.
+
+    Returns (orders, skipped_order_ids) where *skipped_order_ids* is the set
+    of order numbers the library flagged as unsupported (Fresh / Whole Foods /
+    physical-store orders).
 
     The amazonorders library fires one HTTP request per order in parallel
     (full_details=True). On macOS this burst can overwhelm the DNS resolver,
@@ -851,10 +921,10 @@ def _fetch_year_with_retry(
         progress = FetchProgress(amazon_orders, f"year {year}", verbose=verbose)
         try:
             orders = amazon_orders.get_order_history(year=year, full_details=True)
-            progress.finish()
+            skipped = progress.finish()
             if verbose:
                 print(f"  [API] → {len(orders)} orders returned")
-            return orders
+            return orders, set(skipped)
         except RequestsConnectionError as exc:
             progress.finish()
             if attempt < max_retries:
@@ -877,17 +947,19 @@ def _fetch_year_with_retry(
             # so the exception is not interleaved with \r progress lines.
             progress.finish()
             raise
-    return []   # unreachable, keeps type-checkers happy
+    return [], set()   # unreachable, keeps type-checkers happy
 
 
 def _fetch_incremental_with_retry(
     amazon_orders,
     max_retries: int = 3,
     verbose: bool = False,
-) -> list:
+) -> tuple[list, set[str]]:
     """
     Fetch the last 3 months of orders using the library's native time_filter,
     with retry on network errors.
+
+    Returns (orders, skipped_order_ids) — see _fetch_year_with_retry.
     """
     if verbose:
         print('  [API] get_order_history(time_filter="months-3", full_details=True)')
@@ -897,10 +969,10 @@ def _fetch_incremental_with_retry(
             orders = amazon_orders.get_order_history(
                 time_filter="months-3", full_details=True
             )
-            progress.finish()
+            skipped = progress.finish()
             if verbose:
                 print(f"  [API] → {len(orders)} orders returned")
-            return orders
+            return orders, set(skipped)
         except RequestsConnectionError as exc:
             progress.finish()
             if attempt < max_retries:
@@ -921,7 +993,7 @@ def _fetch_incremental_with_retry(
         except Exception:
             progress.finish()
             raise
-    return []   # unreachable
+    return [], set()   # unreachable
 
 
 # ---------------------------------------------------------------------------
@@ -977,11 +1049,14 @@ def main():
         existing_items = load_existing_items(year)
         existing_by_id = {i["item_id"]: i for i in existing_items}
         print(f"Fetching orders for {year}...")
-        raw_orders = _fetch_year_with_retry(amazon_orders, year, verbose=verbose)
+        raw_orders, skipped_ids = _fetch_year_with_retry(amazon_orders, year, verbose=verbose)
+        if skipped_ids:
+            raw_orders = [o for o in raw_orders if o.order_number not in skipped_ids]
         print(f"  Found {len(raw_orders)} orders.")
         items = build_items_from_orders(raw_orders)
         if verbose:
             print(f"  [summary] Built {len(items)} item records from {len(raw_orders)} orders")
+        warn_status_errors(items)
         enrich_items_with_asin_cache(items, session, verbose=verbose)
         _preserve_return_window(items, existing_by_id)
         write_output(items, year, email=email)
@@ -992,11 +1067,14 @@ def main():
         # ------------------------------------------------------------------
         print("Mode: incremental (last 3 months)")
         print("Fetching orders for the last 3 months...")
-        raw_orders = _fetch_incremental_with_retry(amazon_orders, verbose=verbose)
+        raw_orders, skipped_ids = _fetch_incremental_with_retry(amazon_orders, verbose=verbose)
+        if skipped_ids:
+            raw_orders = [o for o in raw_orders if o.order_number not in skipped_ids]
         print(f"  Found {len(raw_orders)} orders.")
         new_items = build_items_from_orders(raw_orders)
         if verbose:
             print(f"  [summary] Built {len(new_items)} item records from {len(raw_orders)} orders")
+        warn_status_errors(new_items)
         enrich_items_with_asin_cache(new_items, session, verbose=verbose)
 
         # Partition new items by calendar year

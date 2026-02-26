@@ -247,6 +247,7 @@ header h1 {
 .badge-return-transit    { background: #cffafe; color: var(--color-return-active); }
 .badge-return-complete   { background: #f3f4f6; color: var(--color-pending); }
 .badge-replacement       { background: #ede9fe; color: #6d28d9; }
+.badge-unknown           { background: #fff7ed; color: #c2410c; }
 .badge-sns               { background: #dbeafe; color: #1d4ed8; }
 
 /* ── Return window badges (Delivered items) ── */

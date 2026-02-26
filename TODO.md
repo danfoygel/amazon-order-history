@@ -246,3 +246,9 @@ Let's add visual regression testing - evaluate using Percy or BackstopJS or anot
 Moved recurring workflow instructions (worktree data symlink, TODO-driven planning vs implementation, dev server URL sharing) from NOTES.md prompt templates into CLAUDE.md as persistent project instructions. Simplified NOTES.md to short prompt starters with original text preserved in a "Raw Prompts" section.
 
 ---
+
+## Item 34: Identify and display digital orders
+
+Digital downloads (e.g. software, Kindle books) have empty `delivery_status` because there's no physical shipment. Currently these are indistinguishable from physical orders where Amazon simply dropped the tracking data. Investigate how to reliably detect digital orders (product category, ASIN patterns, order metadata) and give them a distinct status or visual indicator instead of lumping them in with empty-status physical orders. Example: order 114-2932976-0773838 (TurboTax Premier Desktop Edition 2025, PC/Mac Download).
+
+---
