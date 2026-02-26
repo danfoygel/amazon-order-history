@@ -137,7 +137,7 @@ class TestEnrichItemsWithAsinCache:
         session = _session_with_responses(_mock_response(200, html=html))
 
         items = [
-            {"asin": "B0ENRICHED1", "return_policy": None, "return_window_end": "2025-08-01"},
+            {"asin": "B0ENRICH01", "return_policy": None, "return_window_end": "2025-08-01"},
         ]
         enrich_items_with_asin_cache(items, session, verbose=False)
 
@@ -147,7 +147,7 @@ class TestEnrichItemsWithAsinCache:
         assert os.path.exists(cache_path)
         with open(cache_path) as f:
             cache = json.load(f)
-        assert "B0ENRICHED1" in cache
+        assert "B0ENRICH01" in cache
 
     @patch("fetch_orders.time.sleep")
     def test_already_cached_not_refetched(self, mock_sleep, tmp_path, monkeypatch):
@@ -158,12 +158,12 @@ class TestEnrichItemsWithAsinCache:
         # Pre-populate cache
         os.makedirs(os.path.dirname(cache_path), exist_ok=True)
         with open(cache_path, "w") as f:
-            json.dump({"B0CACHED001": {"return_policy": "non_returnable"}}, f)
+            json.dump({"B0CACHED01": {"return_policy": "non_returnable"}}, f)
 
         session = Mock()
         session.session = Mock()
         items = [
-            {"asin": "B0CACHED001", "return_policy": "free_or_replace", "return_window_end": "2025-08-01"},
+            {"asin": "B0CACHED01", "return_policy": "free_or_replace", "return_window_end": "2025-08-01"},
         ]
         enrich_items_with_asin_cache(items, session, verbose=False)
 
@@ -199,12 +199,12 @@ class TestEnrichItemsWithAsinCache:
 
         # Pre-populate cache with None policy
         with open(cache_path, "w") as f:
-            json.dump({"B0NONESIG01": {"return_policy": None}}, f)
+            json.dump({"B0NONESIG0": {"return_policy": None}}, f)
 
         session = Mock()
         session.session = Mock()
         items = [
-            {"asin": "B0NONESIG01", "return_policy": "return_only", "return_window_end": "2025-08-01"},
+            {"asin": "B0NONESIG0", "return_policy": "return_only", "return_window_end": "2025-08-01"},
         ]
         enrich_items_with_asin_cache(items, session, verbose=False)
 

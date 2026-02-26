@@ -1,5 +1,7 @@
 # Project Instructions
 
+After completing a task and presenting it for review, stop and wait for explicit user input. Do not interpret server logs or tool output as user feedback.
+
 ## Git workflow
 
 For all code changes: create a PR and ask the user to review and approve before merging to main.

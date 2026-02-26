@@ -11,12 +11,12 @@ from fetch_orders import extract_asin, slugify
 
 class TestExtractAsin:
     def test_dp_url(self):
-        url = "https://www.amazon.com/dp/B0123456789/ref=some_ref"
-        assert extract_asin(url) == "B0123456789"
+        url = "https://www.amazon.com/dp/B012345678/ref=some_ref"
+        assert extract_asin(url) == "B012345678"
 
     def test_gp_product_url(self):
-        url = "https://www.amazon.com/gp/product/B0123456789?th=1"
-        assert extract_asin(url) == "B0123456789"
+        url = "https://www.amazon.com/gp/product/B012345678?th=1"
+        assert extract_asin(url) == "B012345678"
 
     def test_isbn_asin(self):
         """ISBN-10 codes (all digits, not starting with B) are valid ASINs."""
@@ -35,8 +35,8 @@ class TestExtractAsin:
 
     def test_case_insensitive(self):
         """ASIN_RE uses re.IGNORECASE so lowercase ASINs should match."""
-        url = "https://www.amazon.com/dp/b0123456789"
-        assert extract_asin(url) == "b0123456789"
+        url = "https://www.amazon.com/dp/b012345678"
+        assert extract_asin(url) == "b012345678"
 
     def test_asin_with_title_slug(self):
         """Real Amazon URLs often have a title slug before /dp/."""

@@ -30,7 +30,7 @@ def make_item(
     title="Test Item",
     price=9.99,
     quantity=1,
-    link="https://www.amazon.com/dp/B0123456789",
+    link="https://www.amazon.com/dp/B012345678",
     image_link="https://m.media-amazon.com/images/I/test.jpg",
     parsed=None,
 ):

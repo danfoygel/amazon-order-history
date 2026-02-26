@@ -20,7 +20,7 @@ class TestBuildItemRecord:
             title="Widget",
             price=12.50,
             quantity=2,
-            link="https://www.amazon.com/dp/B0TESTITEM1",
+            link="https://www.amazon.com/dp/B0TESTITM1",
             image_link="https://m.media-amazon.com/images/I/widget.jpg",
         )
         shipment = make_shipment(
@@ -36,17 +36,17 @@ class TestBuildItemRecord:
             shipments=[shipment],
         )
 
-        record = build_item_record(order, shipment, item, "111-0000000-0000001__B0TESTITEM1")
+        record = build_item_record(order, shipment, item, "111-0000000-0000001__B0TESTITM1")
 
-        assert record["item_id"] == "111-0000000-0000001__B0TESTITEM1"
+        assert record["item_id"] == "111-0000000-0000001__B0TESTITM1"
         assert record["order_id"] == "111-0000000-0000001"
         assert record["order_date"] == "2025-06-15"
         assert record["title"] == "Widget"
-        assert record["asin"] == "B0TESTITEM1"
+        assert record["asin"] == "B0TESTITM1"
         assert record["quantity"] == 2
         assert record["unit_price"] == 12.50
         assert record["total_price"] == 25.00
-        assert record["item_link"] == "https://www.amazon.com/dp/B0TESTITEM1"
+        assert record["item_link"] == "https://www.amazon.com/dp/B0TESTITM1"
         assert record["image_link"] == "https://m.media-amazon.com/images/I/widget.jpg"
         assert record["carrier"] == "UPS"
         assert record["tracking_url"] == "https://www.ups.com/track?num=1Z"
@@ -127,14 +127,14 @@ class TestBuildItemsFromOrders:
 
     def test_duplicate_asin_suffix(self):
         """Two items with the same ASIN in the same order get __1, __2 suffixes."""
-        item_a = make_item(title="Same", link="https://www.amazon.com/dp/B0DUPLICATE")
-        item_b = make_item(title="Same", link="https://www.amazon.com/dp/B0DUPLICATE")
+        item_a = make_item(title="Same", link="https://www.amazon.com/dp/B0DUPLICAT")
+        item_b = make_item(title="Same", link="https://www.amazon.com/dp/B0DUPLICAT")
         shipment = make_shipment(items=[item_a, item_b])
         order = make_order(order_number="111-DUP-TEST", shipments=[shipment])
         items = build_items_from_orders([order])
         assert len(items) == 2
-        assert items[0]["item_id"] == "111-DUP-TEST__B0DUPLICATE"
-        assert items[1]["item_id"] == "111-DUP-TEST__B0DUPLICATE__1"
+        assert items[0]["item_id"] == "111-DUP-TEST__B0DUPLICAT"
+        assert items[1]["item_id"] == "111-DUP-TEST__B0DUPLICAT__1"
 
     def test_item_without_asin_uses_slug(self):
         """Item without a parseable ASIN uses slugified title in item_id."""
