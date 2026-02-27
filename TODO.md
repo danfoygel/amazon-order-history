@@ -263,8 +263,8 @@ Changed the "Updated" header to use only the current calendar year's `generated_
 
 ---
 
-## Item 38: Remove file:/// Support
+## Item 38: Remove file:/// Support ✅ (merged PR #57)
 
-Let's rip out the dual access approach - so far, we've allowed the page to either be loaded from a server running on localhost or directly through file:///, but it's more trouble than it's worth.  Look through the project and remove anything in the code/docs that is only needed to support file:///.  Also, all of the data files as well as status rules can now go back to being pure JSON (as they should have been all along) - update the code, but also convert the files on disk so they don't have to be refetched.
+Removed the dual `file:///`/`http://` access pattern. Converted all data files to pure JSON (`status_rules.json`, `app_data_YYYY.json`, `app_data_manifest.json`). `app.js` now uses `fetch()` instead of dynamic `<script>` injection. Removed synchronous XHR fallback in `order_logic.js`. Updated `fetch_orders.py`, `validate_data.js`, all tests, and docs. Converted 26 on-disk data files.
 
 ---
