@@ -23,7 +23,7 @@ jobs:
 
       - run: npm ci
       - run: npx playwright install --with-deps chromium
-      - run: pip install pytest
+      - run: pip install pytest beautifulsoup4
 
       - name: JavaScript tests
         run: npx vitest run
