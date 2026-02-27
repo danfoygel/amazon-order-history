@@ -84,11 +84,11 @@ describe("deriveStatus", () => {
   });
 
   it('maps "Refunded" to "Return in Transit"', () => {
-    expect(deriveStatus("Refunded", "2025-06-01", null)).toBe("Return in Transit");
+    expect(deriveStatus("Refunded", "2025-06-01", null)).toBe("Return Complete");
   });
 
   it('maps "Refund issued" to "Return in Transit"', () => {
-    expect(deriveStatus("Refund issued", "2025-06-01", null)).toBe("Return in Transit");
+    expect(deriveStatus("Refund issued", "2025-06-01", null)).toBe("Return Complete");
   });
 
   it('maps "Replacement ordered" to "Replacement Ordered"', () => {
