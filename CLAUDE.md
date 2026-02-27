@@ -20,7 +20,7 @@ Work items live in TODO.md. When asked to work on a TODO item:
 
 When the user says "answers provided in TODO.md", read the updated TODO.md for their responses and proceed with implementation.
 
-Always run full test suite before starting the project as well as at the end.
+Always use red/green TDD.
 
 Update README.md as needed to keep the documentation and instructions accurate.
 
