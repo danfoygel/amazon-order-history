@@ -79,7 +79,9 @@ Add a new special view, with a button to the right of "Decide", that is "Quantit
 
 ---
 
-## Item 12: Plug in stores
+## Item 12: Plug in stores ✅ (merged PR #39)
+
+Added `STORES.md` with detailed research on programmatic order-history retrieval for 9 stores: Amazon (current approach), Walmart, Target, Costco, Home Depot, Lowe's, Ace Hardware, REI, and Backcountry. No store offers a public consumer order-history API. Key findings: Costco has a known GraphQL endpoint with multiple open-source tools; Home Depot/Lowe's have Pro account CSV exports; Walmart has an open-source invoice exporter extension; the rest require Playwright browser automation. Research only — no implementation yet.
 
 ---
 
