@@ -56,6 +56,19 @@ class TestBuildItemRecord:
         assert record["return_initiated_date"] is None
         assert record["return_notes"] == ""
         assert record["subscribe_and_save"] is False
+        assert record["is_digital"] is False
+
+    def test_digital_item_detected(self):
+        """Digital item with software library link -> is_digital True."""
+        from bs4 import BeautifulSoup
+
+        html = '<div><div class="yohtmlc-item-level-connections"><a href="#">Go to Your Software Library</a></div></div>'
+        parsed = BeautifulSoup(html, "html.parser")
+        item = make_item(title="TurboTax [Download]", parsed=parsed)
+        shipment = make_shipment(delivery_status="", tracking_link=None, items=[item])
+        order = make_order(shipments=[shipment])
+        record = build_item_record(order, shipment, item, "test-digital")
+        assert record["is_digital"] is True
 
     def test_subscribe_and_save_detected(self):
         """subscription_discount present on order -> subscribe_and_save True."""

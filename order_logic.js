@@ -211,6 +211,7 @@ function statusBadgeHtml(status) {
     "Return in Transit":   ["badge-return-transit",  "Return in Transit"],
     "Return Complete":     ["badge-return-complete", "Return Complete"],
     "Replacement Ordered": ["badge-replacement",     "Replacement"],
+    "Digital":             ["badge-digital",          "Digital"],
   };
   const [cls, label] = map[status] || ["badge-pending", status || "Unknown"];
   return `<span class="badge ${cls}">${label}</span>`;
@@ -235,6 +236,11 @@ function orderUrl(item) {
 // ---------------------------------------------------------------------------
 function effectiveStatus(item) {
   let status = deriveStatus(item.delivery_status, item.order_date, item.tracking_url);
+  // Digital items: empty delivery_status + is_digital flag from fetch_orders.py
+  if ((status === "Unknown" || status === "Delivered") && item.is_digital &&
+      !(item.delivery_status || "").trim()) {
+    return "Digital";
+  }
   // Apply known-issue overrides for items with degraded status data
   if (status === "Unknown" && item.item_id && KNOWN_STATUS_OVERRIDES[item.item_id]) {
     status = KNOWN_STATUS_OVERRIDES[item.item_id];

@@ -84,6 +84,7 @@ function computeTabCounts(items) {
     Delivered: 0,
     Shipped: 0,
     Ordered: 0,
+    Digital: 0,
     Cancelled: 0,
     Unknown: 0,
     "Return Started": 0,
@@ -117,9 +118,12 @@ function renderTabCounts(items) {
     if (countEl && counts[filter] !== undefined) {
       countEl.textContent = counts[filter];
     }
-    // Only show the Unknown tab when there are items with that status
+    // Only show the Unknown/Digital tabs when there are items with that status
     if (filter === "Unknown") {
       btn.style.display = counts.Unknown > 0 ? "" : "none";
+    }
+    if (filter === "Digital") {
+      btn.style.display = counts.Digital > 0 ? "" : "none";
     }
   });
 }
@@ -162,6 +166,7 @@ function statusBadgeHtml(status) {
     "Return in Transit":   ["badge-return-transit",  "Return in Transit"],
     "Return Complete":     ["badge-return-complete", "Return Complete"],
     "Replacement Ordered": ["badge-replacement",     "Replacement"],
+    "Digital":             ["badge-digital",          "Digital"],
     "Unknown":             ["badge-unknown",         "Unknown"],
   };
   const [cls, label] = map[status] || ["badge-pending", status || "Unknown"];
@@ -365,12 +370,18 @@ function renderCombined(allFiltered) {
     allFiltered.filter(i => effectiveStatus(i) === "Ordered"),
     "expected_delivery_asc"
   );
+
+  const digital = sortItems(
+    allFiltered.filter(i => effectiveStatus(i) === "Digital"),
+    "order_date_desc"
+  );
   const restItems = sortItems(
     allFiltered.filter(i => {
       const s = effectiveStatus(i);
       if ((s === "Return Started" || s === "Replacement Ordered") && !isKept(i)) return false;
       if (s === "Shipped") return false;
       if (s === "Ordered") return false;
+      if (s === "Digital") return false;
       if (s === "Delivered" && !isKept(i) && i.return_window_end && new Date(i.return_window_end + "T00:00:00") >= today) return false;
       return true;
     }),
@@ -402,6 +413,7 @@ function renderCombined(allFiltered) {
     { label: "Decide",    items: decide   },
     { label: "Shipped",   items: shipped  },
     { label: "Ordered",   items: ordered  },
+    { label: "Digital",   items: digital  },
   ];
 
   for (const { label, items } of fixedSections) {
@@ -804,6 +816,7 @@ const GRAPH_STATUSES = [
   "Ordered",
   "Shipped",
   "Delivered",
+  "Digital",
   "Replacement Ordered",
   "Return Started",
   "Return in Transit",
@@ -812,10 +825,14 @@ const GRAPH_STATUSES = [
   "Unknown",
 ];
 
-// Returns GRAPH_STATUSES filtered to omit "Unknown" when there are none.
+// Returns GRAPH_STATUSES filtered to omit "Unknown"/"Digital" when there are none.
 function activeGraphStatuses() {
   const hasUnknown = allItems.some(item => effectiveStatus(item) === "Unknown");
-  return hasUnknown ? GRAPH_STATUSES : GRAPH_STATUSES.filter(s => s !== "Unknown");
+  const hasDigital = allItems.some(item => effectiveStatus(item) === "Digital");
+  return GRAPH_STATUSES.filter(s =>
+    (s !== "Unknown" || hasUnknown) &&
+    (s !== "Digital" || hasDigital)
+  );
 }
 
 // Display labels for chart legends (where internal status name differs)
@@ -828,6 +845,7 @@ const GRAPH_STATUS_COLORS = {
   "Ordered":             "#6b7280",   // pending gray
   "Shipped":             "#2563eb",   // blue
   "Delivered":           "#16a34a",   // green
+  "Digital":             "#7c3aed",   // violet
   "Replacement Ordered": "#6d28d9",   // purple
   "Return Started":      "#d97706",   // amber
   "Return in Transit":   "#06b6d4",   // cyan (clearly distinct from blue)
