@@ -60,7 +60,7 @@ class TestFetchProductPageInfo:
         assert info["return_policy"] is None
 
     @patch("fetch_orders.time.sleep")
-    def test_http_404_not_cached(self, mock_sleep):
+    def test_http_404_not_retried(self, mock_sleep):
         """404 is a permanent failure — returned immediately, not retried."""
         session = _session_with_responses(_mock_response(404))
         info, err = fetch_product_page_info(session, "B0TEST4041")
@@ -244,3 +244,67 @@ class TestEnrichItemsWithAsinCache:
         ]
         enrich_items_with_asin_cache(items, session, verbose=False)
         assert items[0]["return_policy"] == "return_only"
+
+    @patch("fetch_orders.time.sleep")
+    def test_404_cached_as_permanent_error(self, mock_sleep, tmp_path, monkeypatch):
+        """404 errors are cached so the ASIN is not re-fetched on subsequent runs."""
+        cache_path = str(tmp_path / "asin_cache.json")
+        monkeypatch.setattr("fetch_orders.ASIN_CACHE_PATH", cache_path)
+
+        session = _session_with_responses(_mock_response(404))
+        items = [
+            {"asin": "B0GONE4041", "return_policy": None, "return_window_end": None},
+        ]
+        enrich_items_with_asin_cache(items, session, verbose=False)
+
+        # Cache should contain an error entry
+        with open(cache_path) as f:
+            cache = json.load(f)
+        assert "B0GONE4041" in cache
+        assert cache["B0GONE4041"]["_error"] == "HTTP 404"
+        assert "_fetched_at" in cache["B0GONE4041"]
+
+        # Item should not have been enriched
+        assert items[0]["return_policy"] is None
+
+    @patch("fetch_orders.time.sleep")
+    def test_cached_404_not_refetched(self, mock_sleep, tmp_path, monkeypatch):
+        """An ASIN with a cached 404 error entry should not be fetched again."""
+        cache_path = str(tmp_path / "asin_cache.json")
+        monkeypatch.setattr("fetch_orders.ASIN_CACHE_PATH", cache_path)
+
+        # Pre-populate cache with a 404 error entry
+        with open(cache_path, "w") as f:
+            json.dump({"B0GONE4041": {"_error": "HTTP 404", "_fetched_at": "2025-01-01T00:00:00"}}, f)
+
+        session = Mock()
+        session.session = Mock()
+        items = [
+            {"asin": "B0GONE4041", "return_policy": "return_only", "return_window_end": "2025-08-01"},
+        ]
+        enrich_items_with_asin_cache(items, session, verbose=False)
+
+        # Should not have fetched — the ASIN is already in the cache
+        session.session.get.assert_not_called()
+        # Error entry should not modify item's return_policy
+        assert items[0]["return_policy"] == "return_only"
+        assert items[0]["return_window_end"] == "2025-08-01"
+
+    @patch("fetch_orders.time.sleep")
+    def test_503_not_cached_as_error(self, mock_sleep, tmp_path, monkeypatch):
+        """Transient errors (503) should NOT be cached — only permanent ones."""
+        cache_path = str(tmp_path / "asin_cache.json")
+        monkeypatch.setattr("fetch_orders.ASIN_CACHE_PATH", cache_path)
+
+        responses = [_mock_response(503) for _ in range(3)]
+        session = _session_with_responses(*responses)
+        items = [
+            {"asin": "B0TRANS503", "return_policy": None, "return_window_end": None},
+        ]
+        enrich_items_with_asin_cache(items, session, verbose=False)
+
+        # Cache should be written but NOT contain the failed ASIN
+        if os.path.exists(cache_path):
+            with open(cache_path) as f:
+                cache = json.load(f)
+            assert "B0TRANS503" not in cache

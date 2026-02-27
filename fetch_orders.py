@@ -257,7 +257,8 @@ def fetch_product_page_info(
         (dict, None)   — successful fetch; individual field values may be None
                          if the signal wasn't found on the page.
         (None, str)    — failure; str describes the reason (HTTP status, exception
-                         message, etc.).  Caller should not cache this result.
+                         message, etc.).  Caller may cache permanent errors (e.g.
+                         404) to avoid re-fetching on subsequent runs.
 
     Retries up to max_retries times with exponential backoff (1 s, 2 s, 4 s …)
     on transient errors (5xx, 429, network exceptions).  Permanent failures
@@ -411,6 +412,7 @@ def enrich_items_with_asin_cache(
     """Fetch product pages for uncached ASINs; apply cached data to all items.
 
     Modifies items in-place.  Updates data/asin_cache.json with new entries.
+    Permanent errors (HTTP 404) are also cached to avoid re-fetching.
 
     Fields applied from cache:
         return_policy   — product-page value overrides the order-page heuristic
@@ -439,12 +441,17 @@ def enrich_items_with_asin_cache(
             if verbose:
                 print(f"  [{i}/{len(uncached)}] {asin}")
             info, err = fetch_product_page_info(session, asin, verbose=verbose)
+            now = datetime.datetime.now(datetime.UTC).isoformat()
             if info is not None:
-                info["_fetched_at"] = datetime.datetime.now(datetime.UTC).isoformat()
+                info["_fetched_at"] = now
                 cache[asin] = info
                 fetched += 1
             else:
-                failures.append((asin, err or "unknown error"))
+                reason = err or "unknown error"
+                failures.append((asin, reason))
+                # Cache permanent errors (404) so we don't re-fetch every run.
+                if err and "404" in err:
+                    cache[asin] = {"_error": reason, "_fetched_at": now}
             progress.on_done()
             time.sleep(1.0)  # polite pacing between requests
 
@@ -460,6 +467,8 @@ def enrich_items_with_asin_cache(
         if not asin or asin not in cache:
             continue
         cached = cache[asin]
+        if "_error" in cached:
+            continue  # permanent error entry — no data to apply
         policy = cached.get("return_policy")
         # Only override when the product page gave a definitive (non-None) answer.
         # None means "page loaded but no clear signal" — keep the order-page hint.
