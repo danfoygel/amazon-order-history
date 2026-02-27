@@ -33,13 +33,9 @@ test.beforeEach(async ({ page }) => {
 // Clears localStorage before navigation so each test starts clean.
 // ---------------------------------------------------------------------------
 async function loadApp(page) {
-  // Navigate to a blank page first so we have an origin, then clear storage.
   await page.goto('/');
   await page.evaluate(() => localStorage.clear());
-  // Reload to pick up the clean state.
   await page.reload();
-  await page.waitForLoadState('networkidle');
-  // Wait for the item list to render (at least one card or the meta-bar text).
   await page.waitForSelector('#meta-bar');
 }
 
@@ -57,8 +53,8 @@ async function tabCount(page, filter) {
 // ---------------------------------------------------------------------------
 async function clickTab(page, filter) {
   await page.locator(`.tab[data-filter="${filter}"]`).click();
-  // Brief pause for rendering.
-  await page.waitForTimeout(200);
+  // Wait for the tab to become active.
+  await page.locator(`.tab[data-filter="${filter}"].active`).waitFor();
 }
 
 // ---------------------------------------------------------------------------
@@ -150,7 +146,6 @@ test.describe('Load all years', () => {
 
     // Click "(load all)" link.
     await page.locator('#load-all-link').click();
-    await page.waitForLoadState('networkidle');
     // Wait for the meta-bar to update (load-all link disappears).
     await page.waitForFunction(() => {
       return !document.getElementById('load-all-link');
@@ -185,7 +180,7 @@ test.describe('Search filtering', () => {
     await loadApp(page);
     await clickTab(page, 'all');
     await page.fill('#search-input', 'Pickle');
-    await page.waitForTimeout(300);
+
     expect(await cardCount(page)).toBe(1);
     await expect(page.locator('.item-card', { hasText: 'Pickle' })).toBeVisible();
   });
@@ -194,7 +189,7 @@ test.describe('Search filtering', () => {
     await loadApp(page);
     await clickTab(page, 'all');
     await page.fill('#search-input', '114-4948746-6648245');
-    await page.waitForTimeout(300);
+
     expect(await cardCount(page)).toBe(1);
     await expect(page.locator('.item-card', { hasText: 'Punching Bag' })).toBeVisible();
   });
@@ -203,7 +198,7 @@ test.describe('Search filtering', () => {
     await loadApp(page);
     await clickTab(page, 'all');
     await page.fill('#search-input', 'B019PGG1AC');
-    await page.waitForTimeout(300);
+
     expect(await cardCount(page)).toBe(1);
     await expect(page.locator('.item-card', { hasText: 'Jack Chain' })).toBeVisible();
   });
@@ -212,10 +207,10 @@ test.describe('Search filtering', () => {
     await loadApp(page);
     await clickTab(page, 'all');
     await page.fill('#search-input', 'Pickle');
-    await page.waitForTimeout(300);
+
     expect(await cardCount(page)).toBe(1);
     await page.fill('#search-input', '');
-    await page.waitForTimeout(300);
+
     expect(await cardCount(page)).toBe(18);
   });
 });
@@ -226,7 +221,7 @@ test.describe('Subscribe & Save filter', () => {
     await loadApp(page);
     await clickTab(page, 'all');
     await page.locator('#sns-filter').check();
-    await page.waitForTimeout(300);
+
     expect(await cardCount(page)).toBe(3);
     await expect(page.locator('.item-card', { hasText: 'Rechargeable' })).toBeVisible();
     await expect(page.locator('.item-card', { hasText: 'Hanukkah' })).toBeVisible();
@@ -237,9 +232,9 @@ test.describe('Subscribe & Save filter', () => {
     await loadApp(page);
     await clickTab(page, 'all');
     await page.locator('#sns-filter').check();
-    await page.waitForTimeout(200);
+
     await page.locator('#sns-filter').uncheck();
-    await page.waitForTimeout(200);
+
     expect(await cardCount(page)).toBe(18);
   });
 
@@ -403,7 +398,7 @@ test.describe('Keep button', () => {
     const firstCard = page.locator('.item-card').first();
     const keepBtn = firstCard.locator('.keep-btn');
     await keepBtn.click();
-    await page.waitForTimeout(300);
+
 
     // Decide count should now be 2, and only 2 cards visible.
     expect(await tabCount(page, 'decide')).toBe(2);
@@ -417,12 +412,11 @@ test.describe('Keep button', () => {
     await clickTab(page, 'decide');
     const firstCard = page.locator('.item-card').first();
     await firstCard.locator('.keep-btn').click();
-    await page.waitForTimeout(300);
+
     expect(await tabCount(page, 'decide')).toBe(2);
 
     // Reload the page.
     await page.reload();
-    await page.waitForLoadState('networkidle');
     await page.waitForSelector('#meta-bar');
 
     // Decide should still be 2.
@@ -512,7 +506,7 @@ test.describe('Empty state', () => {
     await loadApp(page);
     await clickTab(page, 'all');
     await page.fill('#search-input', 'zzzznonexistent');
-    await page.waitForTimeout(300);
+
     await expect(page.locator('.empty-state')).toBeVisible();
   });
 });

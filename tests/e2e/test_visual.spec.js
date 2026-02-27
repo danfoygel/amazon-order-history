@@ -47,10 +47,9 @@ test.beforeEach(async ({ page }) => {
 // Helper: load the app with clean state.
 // ---------------------------------------------------------------------------
 async function loadApp(page) {
+  // Clear localStorage via init script so it's clean before anything loads.
+  await page.addInitScript(() => localStorage.clear());
   await page.goto('/');
-  await page.evaluate(() => localStorage.clear());
-  await page.reload();
-  await page.waitForLoadState('networkidle');
   // #meta-bar is hidden on narrow viewports (<640px), so wait for
   // the item list or filter tabs instead.
   await page.waitForSelector('#filter-tabs');
@@ -62,7 +61,6 @@ async function loadApp(page) {
 // ---------------------------------------------------------------------------
 async function loadAll(page) {
   await page.locator('#load-all-link').click();
-  await page.waitForLoadState('networkidle');
   await page.waitForFunction(() => !document.getElementById('load-all-link'));
 }
 
@@ -71,7 +69,7 @@ async function loadAll(page) {
 // ---------------------------------------------------------------------------
 async function clickTab(page, filter) {
   await page.locator(`.tab[data-filter="${filter}"]`).click();
-  await page.waitForTimeout(300);
+  await page.locator(`.tab[data-filter="${filter}"].active`).waitFor();
 }
 
 // ---------------------------------------------------------------------------
@@ -122,7 +120,11 @@ test.describe('Visual: Full-page views', () => {
     await loadApp(page);
     // Collapse the Mail Back section.
     await page.locator('.section-heading', { hasText: 'Mail Back' }).click();
-    await page.waitForTimeout(200);
+    // Wait for collapse class to be applied.
+    await page.waitForFunction(() => {
+      const h = [...document.querySelectorAll('.section-heading')].find(el => el.textContent.includes('Mail Back'));
+      return h && h.parentElement.classList.contains('collapsed');
+    });
     await expect(page).toHaveScreenshot('combined-collapsed.png', {
       ...SCREENSHOT_OPTS,
       mask: imageMask(page),
@@ -174,7 +176,7 @@ test.describe('Visual: Full-page views', () => {
     await loadApp(page);
     await clickTab(page, 'all');
     await page.fill('#search-input', 'Pickle');
-    await page.waitForTimeout(300);
+    await page.locator('.item-card', { hasText: 'Pickle' }).waitFor();
     await expect(page).toHaveScreenshot('search-results.png', {
       ...SCREENSHOT_OPTS,
       mask: imageMask(page),
@@ -186,7 +188,7 @@ test.describe('Visual: Full-page views', () => {
     await loadApp(page);
     await clickTab(page, 'all');
     await page.fill('#search-input', 'zzzznonexistent');
-    await page.waitForTimeout(300);
+    await page.locator('.empty-state').waitFor();
     await expect(page).toHaveScreenshot('search-empty.png', {
       ...SCREENSHOT_OPTS,
       fullPage: true,
@@ -197,7 +199,6 @@ test.describe('Visual: Full-page views', () => {
     await loadApp(page);
     await clickTab(page, 'all');
     await page.locator('#sns-filter').check();
-    await page.waitForTimeout(300);
     await expect(page).toHaveScreenshot('sns-filter.png', {
       ...SCREENSHOT_OPTS,
       mask: imageMask(page),
@@ -209,7 +210,7 @@ test.describe('Visual: Full-page views', () => {
     await loadApp(page);
     await loadAll(page);
     await page.locator('.graph-btn', { hasText: 'Years' }).click();
-    await page.waitForTimeout(500);
+    await page.locator('canvas').waitFor();
     await expect(page).toHaveScreenshot('graph-years.png', {
       ...SCREENSHOT_OPTS,
       mask: [...imageMask(page), ...chartMask(page)],
@@ -220,7 +221,7 @@ test.describe('Visual: Full-page views', () => {
     await loadApp(page);
     await loadAll(page);
     await page.locator('.graph-btn', { hasText: 'Months' }).click();
-    await page.waitForTimeout(500);
+    await page.locator('canvas').waitFor();
     await expect(page).toHaveScreenshot('graph-months.png', {
       ...SCREENSHOT_OPTS,
       mask: [...imageMask(page), ...chartMask(page)],

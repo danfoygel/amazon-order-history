@@ -4,10 +4,11 @@ After completing a task and presenting it for review, stop and wait for explicit
 
 ## Worktree setup
 
-When working in a worktree, symlink the data directory from the main repo so the app can load order data:
+When working in a worktree, symlink the data directory and Python virtual environment from the main repo:
 
 ```
 ln -s /Users/dfoygel/OrderHistory/data data
+ln -s /Users/dfoygel/OrderHistory/.venv .venv
 ```
 
 ## TODO-driven workflow
