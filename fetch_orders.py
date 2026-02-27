@@ -1047,7 +1047,11 @@ def main():
 
     # Use warn_on_missing_required_field=True so old orders with unusual HTML
     # (e.g. missing grand_total) produce a warning instead of raising an exception.
-    config = AmazonOrdersConfig(data={"warn_on_missing_required_field": True})
+    config = AmazonOrdersConfig(data={
+        "warn_on_missing_required_field": True,
+        "thread_pool_size": 4,
+        "connection_pool_size": 8,
+    })
     amazon_orders = AmazonOrders(session, config=config)
     today = datetime.date.today()
     t_total = time.monotonic()
