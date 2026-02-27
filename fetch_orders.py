@@ -28,15 +28,8 @@ from urllib.parse import urlparse
 
 from dotenv import load_dotenv
 
-try:
-    from dateutil import parser as _dateutil_parser
-except ImportError:
-    _dateutil_parser = None
-
-try:
-    from bs4 import BeautifulSoup as _BeautifulSoup
-except ImportError:
-    _BeautifulSoup = None
+from dateutil import parser as _dateutil_parser
+from bs4 import BeautifulSoup as _BeautifulSoup
 
 try:
     from amazonorders.session import AmazonSession
@@ -139,8 +132,6 @@ def slugify(text: str) -> str:
 def _parse_return_date(text: str) -> str | None:
     """Extract an ISO date from return eligibility text such as
     'Return or replace items: Eligible through March 22, 2026'."""
-    if _dateutil_parser is None:
-        return None
     try:
         d = _dateutil_parser.parse(text, fuzzy=True).date()
         return d.isoformat()
@@ -267,12 +258,6 @@ def fetch_product_page_info(
     Currently extracted fields:
         return_policy  "free_or_replace" | "non_returnable" | None
     """
-    if _BeautifulSoup is None:
-        reason = "bs4 not installed — cannot fetch product page"
-        if verbose:
-            print(f"    [{asin}] {reason}")
-        return None, reason
-
     # HTTP status codes worth retrying (transient server-side errors).
     RETRYABLE_STATUSES = {429, 500, 502, 503, 504}
 
