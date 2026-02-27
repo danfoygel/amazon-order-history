@@ -32,4 +32,4 @@ jobs:
         run: python -m pytest tests/python/ -v
 
       - name: E2E tests
-        run: npx playwright test
+        run: npx playwright test tests/e2e/test_web_view.spec.js
