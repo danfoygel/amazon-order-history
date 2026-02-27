@@ -245,6 +245,12 @@ Converted `status_rules.json` to `status_rules.js` — an inline JS variable loa
 
 ---
 
+## Item 36: CI ✅ (merged PR #51)
+
+Added GitHub Actions CI workflow (`.github/workflows/test.yml`) that runs JS unit tests (vitest), Python unit tests (pytest), and functional E2E tests (Playwright) on every push to main and on all PRs. Visual snapshot tests remain local-only (darwin snapshots).
+
+---
+
 ## Item 34: Identify and display digital orders
 
 Digital downloads (e.g. software, Kindle books) have empty `delivery_status` because there's no physical shipment. Currently these are indistinguishable from physical orders where Amazon simply dropped the tracking data. Investigate how to reliably detect digital orders (product category, ASIN patterns, order metadata) and give them a distinct status or visual indicator instead of lumping them in with empty-status physical orders. Example: order 114-2932976-0773838 (TurboTax Premier Desktop Edition 2025, PC/Mac Download).

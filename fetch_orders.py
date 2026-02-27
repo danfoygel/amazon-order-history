@@ -651,7 +651,7 @@ def write_output(items: list[dict], year: int, email: str | None = None) -> None
     os.makedirs("data", exist_ok=True)
     path = f"data/app_data_{year}.js"
     output = {
-        "generated_at": datetime.datetime.now(datetime.UTC).isoformat(),
+        "generated_at": datetime.datetime.now().isoformat(),
         "email": email,
         "items": items,
     }
