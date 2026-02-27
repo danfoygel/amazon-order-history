@@ -56,12 +56,6 @@ I want to also store my data files in git - but obviously in a private repo that
 
 ---
 
-## Item 10: Diagnose "Return in Transit"
-
-There are 73 items in "return in transit" status, most quite old.  This doesn't make sense - there should be essentially zero.  Are these items that I forgot to ship back?  Or did they get lost by the shipping company and never arrived at Amazon?  Or did Amazon receive them but didn't credit me for the return, for some reason?  Investigate this issue - look at some example items in that status from various years, use Chrome to find the tracking number and then access the tracking history, and write an analysis of what you've found.
-
----
-
 ## Item 11: Quantity Insights
 
 Add a new special view, with a button to the right of "Decide", that is "Quantity".  When that's the one selected, show items that I've ordered multiple times.  Think of this as a s&s optimizer.
