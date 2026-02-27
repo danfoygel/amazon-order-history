@@ -539,7 +539,6 @@ function loadScript(src) {
  * allItems, update loadedYears, and return metadata from the freshest file.
  */
 function mergeYears(years) {
-  let latestGeneratedAt = null;
   let email = null;
   for (const year of years) {
     if (loadedYears.has(year)) continue;
@@ -547,13 +546,12 @@ function mergeYears(years) {
     if (!yearData) continue;
     allItems = allItems.concat(yearData.items || []);
     loadedYears.add(year);
-    if (yearData.generated_at) {
-      if (!latestGeneratedAt || yearData.generated_at > latestGeneratedAt) {
-        latestGeneratedAt = yearData.generated_at;
-      }
-    }
     if (!email && yearData.email) email = yearData.email;
   }
+  // Use the current calendar year's generated_at so historical backfills
+  // don't change the displayed "Updated" timestamp.
+  const currentYearData = window["ORDER_DATA_" + new Date().getFullYear()];
+  const latestGeneratedAt = currentYearData?.generated_at || null;
   return { latestGeneratedAt, email };
 }
 
@@ -633,17 +631,15 @@ async function loadAllYears(manifest) {
   // Re-sort allItems newest-first so display order stays consistent
   allItems.sort((a, b) => (b.order_date || "").localeCompare(a.order_date || ""));
 
-  // Retrieve email/generatedAt across all loaded years for the final header
+  // Retrieve email and current-year generatedAt for the final header
   let finalEmail = null;
-  let finalGenAt = null;
   for (const year of loadedYears) {
     const yd = window["ORDER_DATA_" + year];
     if (!yd) continue;
     if (!finalEmail && yd.email) finalEmail = yd.email;
-    if (yd.generated_at) {
-      if (!finalGenAt || yd.generated_at > finalGenAt) finalGenAt = yd.generated_at;
-    }
   }
+  const currentYearData = window["ORDER_DATA_" + new Date().getFullYear()];
+  const finalGenAt = currentYearData?.generated_at || null;
 
   renderMetaBar(manifest, finalGenAt, finalEmail);
   logDiagnostics(allItems);

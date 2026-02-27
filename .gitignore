@@ -3,6 +3,7 @@
 
 # Generated data files (contain personal order history)
 data/
+data.bak/
 output/
 
 # Python
