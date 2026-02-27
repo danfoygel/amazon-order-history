@@ -33,7 +33,9 @@ const _knownStatusData = (typeof require !== "undefined")
         var xhr = new XMLHttpRequest();
         xhr.open("GET", "data/known_status_issues.json", false);
         xhr.send();
-        if (xhr.status === 200) return JSON.parse(xhr.responseText);
+        // status is 0 for file:// protocol, 200 for http(s)://
+        if ((xhr.status === 200 || xhr.status === 0) && xhr.responseText)
+          return JSON.parse(xhr.responseText);
       } catch {}
       return {};
     })();

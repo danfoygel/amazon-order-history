@@ -280,4 +280,17 @@ describe("effectiveStatus", () => {
     };
     expect(effectiveStatus(item)).toBe("Return Started");
   });
+
+  it("applies known-status override for items in known_status_issues.json", () => {
+    // "Cannot display current status" is unrecognized → Unknown, but the
+    // override file maps this item_id to "Delivered".
+    const item = {
+      item_id: "002-0752694-0704223__0810933438",
+      delivery_status: "Cannot display current status",
+      order_date: "2009-09-18",
+      tracking_url: null,
+    };
+    expect(deriveStatus(item.delivery_status, item.order_date, item.tracking_url)).toBe("Unknown");
+    expect(effectiveStatus(item)).toBe("Delivered");
+  });
 });
