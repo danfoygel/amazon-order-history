@@ -560,14 +560,25 @@ _STATUS_KEYWORDS = _load_status_keywords()
 
 
 def _load_known_status_issues() -> set[str]:
-    """Load item IDs from data/known_status_issues.json (if it exists)."""
-    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "known_status_issues.json")
+    """Load item IDs from known_status_issues.js (if it exists).
+
+    The JS file uses the same marker-comment pattern as status_rules.js:
+    JSON is embedded between ``// --- BEGIN JSON ---`` and ``// --- END JSON ---``.
+    """
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "known_status_issues.js")
     try:
         with open(p, encoding="utf-8") as f:
-            items = json.load(f).get("items", {})
-            if isinstance(items, dict):
-                return set(items.keys())
-            return set(items)
+            text = f.read()
+        start = text.index("// --- BEGIN JSON ---")
+        end = text.index("// --- END JSON ---")
+        fragment = text[start:end]
+        json_start = fragment.index("{")
+        json_end = fragment.rindex("}") + 1
+        data = json.loads(fragment[json_start:json_end])
+        items = data.get("items", {})
+        if isinstance(items, dict):
+            return set(items.keys())
+        return set(items)
     except Exception:
         return set()
 
@@ -575,7 +586,7 @@ def _load_known_status_issues() -> set[str]:
 def warn_status_errors(items: list[dict]) -> None:
     """Print warnings for items whose delivery_status is unrecognised.
 
-    Items listed in data/known_status_issues.json are silently skipped.
+    Items listed in known_status_issues.js are silently skipped.
     """
     known = _load_known_status_issues()
     warnings = []

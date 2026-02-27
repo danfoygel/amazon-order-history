@@ -9,7 +9,7 @@
 // used by the browser app.  Prints errors for anything that cannot be parsed.
 //
 // Items with degraded data are handled via the known-status overrides in
-// data/known_status_issues.json (loaded by order_logic.js).  Any item whose
+// known_status_issues.js (loaded by order_logic.js).  Any item whose
 // effectiveStatus resolves to "Unknown" is flagged as an error.
 //
 // Usage:

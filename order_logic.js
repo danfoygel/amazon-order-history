@@ -21,22 +21,14 @@ const _rulesData = (typeof require !== "undefined")
 const STATUS_RULES = _rulesData.rules;
 const ASSUME_DELIVERED_AFTER_DAYS = _rulesData.assume_delivered_after_days;
 
-// Known-status overrides (item_id → status).  Gracefully returns {} if the
-// file is absent (e.g. fresh clone without a data/ directory).
+// Known-status overrides (item_id → status).  Loaded from
+// known_status_issues.js using the same pattern as status_rules.js.
 const _knownStatusData = (typeof require !== "undefined")
   ? (function() {
-      try { return require("./data/known_status_issues.json"); }
+      try { return require("./known_status_issues.js"); }
       catch { return {}; }
     })()
-  : (function() {
-      try {
-        var xhr = new XMLHttpRequest();
-        xhr.open("GET", "data/known_status_issues.json", false);
-        xhr.send();
-        if (xhr.status === 200) return JSON.parse(xhr.responseText);
-      } catch {}
-      return {};
-    })();
+  : (typeof KNOWN_STATUS_ISSUES_DATA !== "undefined" ? KNOWN_STATUS_ISSUES_DATA : {});
 
 const KNOWN_STATUS_OVERRIDES = _knownStatusData.items || {};
 
