@@ -92,6 +92,7 @@ function computeTabCounts(items) {
     "Replacement Ordered": 0,
     mail_back: 0,
     decide: 0,
+    quantity: 0,
   };
   for (const item of items) {
     const status = effectiveStatus(item);
@@ -104,6 +105,7 @@ function computeTabCounts(items) {
       if (end >= today) counts.decide++;
     }
   }
+  counts.quantity = groupItemsByAsin(items).length;
   return counts;
 }
 
@@ -415,12 +417,98 @@ function renderCombined(allFiltered) {
   container.appendChild(fragment);
 }
 
+// ---------------------------------------------------------------------------
+// Quantity view — deduplicated items grouped by ASIN
+// ---------------------------------------------------------------------------
+function renderQuantityCard(group) {
+  const href = group.item_link || null;
+  const titleHtml = href
+    ? `<a href="${escHtml(href)}" target="_blank" rel="noopener">${escHtml(group.title)}</a>`
+    : escHtml(group.title);
+
+  const priceHtml = group.unit_price !== null && group.unit_price !== undefined
+    ? `<span class="price">${formatPrice(group.unit_price)}</span>`
+    : "";
+
+  const freqHtml = group.frequencyMonths !== null
+    ? `<span class="badge badge-frequency">Every ${group.frequencyMonths} mo</span>`
+    : "";
+
+  const snsHtml = group.snsEligible
+    ? `<span class="icon-badge badge-sns" title="S&amp;S eligible"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span>`
+    : "";
+
+  const thumbHtml = group.image_link
+    ? `${href ? `<a href="${escHtml(href)}" target="_blank" rel="noopener" class="card-thumb-link">` : `<div class="card-thumb-link">`}<img class="card-thumb" src="${escHtml(group.image_link)}" alt="" loading="lazy" onerror="this.closest('.card-thumb-link').style.display='none'">${href ? `</a>` : `</div>`}`
+    : "";
+
+  const article = document.createElement("article");
+  article.className = "item-card";
+  article.dataset.asin = group.asin;
+
+  article.innerHTML = `
+    <div class="card-top">
+      ${thumbHtml}
+      <div class="card-top-right">
+        <div class="card-title">${titleHtml}</div>
+        <div class="card-badges">
+          <span class="badge badge-quantity">Qty: ${group.totalQuantity}</span>
+          ${freqHtml}
+          ${snsHtml}
+        </div>
+        <div class="card-meta">
+          ${priceHtml}
+          <span>${group.orderCount} order${group.orderCount !== 1 ? "s" : ""}</span>
+        </div>
+      </div>
+    </div>
+  `;
+
+  return article;
+}
+
+function renderQuantityView(items, searchQuery) {
+  const groups = groupItemsByAsin(items);
+
+  // Apply search filter to the deduplicated groups
+  const filtered = searchQuery
+    ? groups.filter(g => {
+        const q = searchQuery.toLowerCase();
+        return (g.title || "").toLowerCase().includes(q) ||
+               (g.asin || "").toLowerCase().includes(q);
+      })
+    : groups;
+
+  const container = document.getElementById("item-list");
+  container.innerHTML = "";
+
+  if (filtered.length === 0) {
+    const div = document.createElement("div");
+    div.className = "empty-state";
+    div.innerHTML = `<h2>No items found</h2><p>Try a different search term.</p>`;
+    container.appendChild(div);
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+  for (const group of filtered) {
+    fragment.appendChild(renderQuantityCard(group));
+  }
+  container.appendChild(fragment);
+}
+
 function sortForFilter(filter) {
   return (filter === "mail_back" || filter === "decide") ? "return_window_asc" : "order_date_desc";
 }
 
 function refreshView() {
-  if (currentFilter === "combined") {
+  // Hide S&S filter on Quantity tab (S&S is shown differently there)
+  const snsLabel = document.getElementById("sns-filter-label");
+  if (snsLabel) snsLabel.style.display = currentFilter === "quantity" ? "none" : "";
+
+  if (currentFilter === "quantity") {
+    renderQuantityView(allItems, currentSearch);
+  } else if (currentFilter === "combined") {
     const filtered = allItems.filter(item => {
       if (currentSnsOnly && !item.subscribe_and_save) return false;
       if (!currentSearch) return true;

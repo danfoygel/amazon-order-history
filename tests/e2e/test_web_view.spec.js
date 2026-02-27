@@ -73,9 +73,9 @@ test.describe('Initial load (2025 data only)', () => {
   test('meta-bar shows partial item count with load-all link', async ({ page }) => {
     await loadApp(page);
     const metaText = await page.locator('#meta-bar').textContent();
-    // Should show "18 of 20 items" and "(load all)" link.
+    // Should show "18 of 23 items" and "(load all)" link.
     expect(metaText).toContain('18');
-    expect(metaText).toContain('20');
+    expect(metaText).toContain('23');
     expect(metaText).toContain('(load all)');
   });
 
@@ -152,12 +152,12 @@ test.describe('Load all years', () => {
     });
 
     const metaText = await page.locator('#meta-bar').textContent();
-    expect(metaText).toContain('20');
+    expect(metaText).toContain('23');
     expect(metaText).not.toContain('(load all)');
 
     // Tab counts should update.
-    expect(await tabCount(page, 'all')).toBe(20);
-    expect(await tabCount(page, 'Delivered')).toBe(10);
+    expect(await tabCount(page, 'all')).toBe(23);
+    expect(await tabCount(page, 'Delivered')).toBe(13);
     // Decide should include Swim Fins (item 20) now.
     expect(await tabCount(page, 'decide')).toBe(4);
     // Other counts unchanged.
@@ -165,12 +165,12 @@ test.describe('Load all years', () => {
     expect(await tabCount(page, 'Ordered')).toBe(2);
   });
 
-  test('Delivered tab shows 10 cards after load all', async ({ page }) => {
+  test('Delivered tab shows 13 cards after load all', async ({ page }) => {
     await loadApp(page);
     await page.locator('#load-all-link').click();
     await page.waitForFunction(() => !document.getElementById('load-all-link'));
     await clickTab(page, 'Delivered');
-    expect(await cardCount(page)).toBe(10);
+    expect(await cardCount(page)).toBe(13);
   });
 });
 
@@ -681,5 +681,107 @@ test.describe('Keyboard navigation', () => {
     // The "j" and "k" should have been typed, not intercepted as shortcuts.
     const searchVal = await page.locator('#search-input').inputValue();
     expect(searchVal).toBe('jack');
+  });
+});
+
+// ===========================================================================
+// Quantity view
+// ===========================================================================
+test.describe('Quantity view', () => {
+
+  async function loadAllAndClickQuantity(page) {
+    await loadApp(page);
+    // Load all data so cross-year duplicates are available
+    await page.locator('#load-all-link').click();
+    await page.waitForFunction(() => !document.getElementById('load-all-link'));
+    await clickTab(page, 'quantity');
+  }
+
+  test('Quantity tab shows correct count of deduplicated items', async ({ page }) => {
+    await loadApp(page);
+    await page.locator('#load-all-link').click();
+    await page.waitForFunction(() => !document.getElementById('load-all-link'));
+    // B07NXG4NV9: qty 2 (2024) + qty 1 (2025) = 3 total
+    // B00004YMGF: qty 1 (2024) + qty 1 (2025) = 2 total
+    // B07JJP4XTL: qty 1 (2024) + qty 2 (2025) = 3 total (Shipped in 2025 still qualifies)
+    const count = await tabCount(page, 'quantity');
+    expect(count).toBe(3);
+  });
+
+  test('Quantity view shows deduplicated item cards sorted by quantity desc', async ({ page }) => {
+    await loadAllAndClickQuantity(page);
+    const cards = page.locator('.item-card');
+    const count = await cards.count();
+    expect(count).toBe(3);
+
+    // Both B07NXG4NV9 and B07JJP4XTL have qty 3; B00004YMGF has qty 2
+    // The last card should be B00004YMGF (qty 2)
+    const lastCardQty = await cards.last().locator('.badge-quantity').textContent();
+    expect(lastCardQty).toBe('Qty: 2');
+  });
+
+  test('Quantity cards show total quantity badge', async ({ page }) => {
+    await loadAllAndClickQuantity(page);
+    const qtyBadges = page.locator('.badge-quantity');
+    const count = await qtyBadges.count();
+    expect(count).toBe(3); // One per card
+  });
+
+  test('Quantity cards show frequency badge when applicable', async ({ page }) => {
+    await loadAllAndClickQuantity(page);
+    // B07NXG4NV9: orders on 2024-07-01 (qty 2) and 2025-01-03 (qty 1) = 3 total, 6 mo span
+    // frequency = 6 / (3-1) = 3 months
+    const freqBadges = page.locator('.badge-frequency');
+    const freqCount = await freqBadges.count();
+    expect(freqCount).toBeGreaterThan(0);
+  });
+
+  test('Quantity cards show S&S icon for items with S&S history', async ({ page }) => {
+    await loadAllAndClickQuantity(page);
+    // B07NXG4NV9 has subscribe_and_save=true in both 2024 and 2025 orders
+    const snsIcons = page.locator('.badge-sns');
+    const snsCount = await snsIcons.count();
+    expect(snsCount).toBe(1); // Only one item has S&S
+  });
+
+  test('Quantity cards do not show order date, return window, or keep button', async ({ page }) => {
+    await loadAllAndClickQuantity(page);
+    // Should have no return-badge or keep-btn
+    expect(await page.locator('.return-badge-ok, .return-badge-warn, .return-badge-closed').count()).toBe(0);
+    expect(await page.locator('.keep-btn').count()).toBe(0);
+    // Should not contain "Ordered" date text pattern
+    const cardMetas = await page.locator('.card-meta').allTextContents();
+    for (const meta of cardMetas) {
+      expect(meta).not.toContain('Ordered');
+    }
+  });
+
+  test('S&S filter checkbox is hidden on Quantity tab', async ({ page }) => {
+    await loadAllAndClickQuantity(page);
+    const snsLabel = page.locator('#sns-filter-label');
+    await expect(snsLabel).toBeHidden();
+  });
+
+  test('S&S filter checkbox reappears when switching away from Quantity', async ({ page }) => {
+    await loadAllAndClickQuantity(page);
+    await clickTab(page, 'all');
+    const snsLabel = page.locator('#sns-filter-label');
+    await expect(snsLabel).toBeVisible();
+  });
+
+  test('search filters Quantity view by title', async ({ page }) => {
+    await loadAllAndClickQuantity(page);
+    expect(await cardCount(page)).toBe(3);
+    await page.fill('#search-input', 'Rechargeable');
+    expect(await cardCount(page)).toBe(1);
+  });
+
+  test('Quantity cards show order count in meta', async ({ page }) => {
+    await loadAllAndClickQuantity(page);
+    const metas = await page.locator('.card-meta').allTextContents();
+    // All items have 2 orders
+    for (const meta of metas) {
+      expect(meta).toContain('2 orders');
+    }
   });
 });

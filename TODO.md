@@ -71,6 +71,55 @@ Add a new special view, with a button to the right of "Decide", that is "Quantit
 - If the frequency is <= 12 months, show that on the item card.
 - For each item, see if you're able to determine whether it's s&s eligible - let me know in the plan whether that's possible.  If yes, show the s&s icon on those items - this will mean something different than the other views, here's it showing that s&s is possible rather than that s&s was used.
 
+### Implementation Plan
+
+**Statuses to include:** Delivered, Ordered, and Shipped (excludes return statuses, Replacement, Cancelled, Unknown).
+
+**Deduplication & aggregation:**
+- Group all qualifying items by `asin` (the unique product identifier)
+- For each ASIN group, sum `quantity` across all orders → `totalQuantity`
+- Only keep groups where `totalQuantity >= 2`
+- Use the most recent order's `title`, `image_link`, and `item_link` for the card display
+- Collect all order dates + quantities for frequency calculation
+
+**Frequency formula (consumption-rate based):**
+- Collect all orders for the ASIN with their dates and quantities, sorted chronologically
+- Time span = last order date - first order date
+- If span = 0 (all orders on same date): no frequency shown (bulk buy)
+- Consumption rate = time span / (totalQuantity - 1), converted to months
+- The `-1` accounts for the last unit not yet consumed
+- Round to nearest whole month (minimum 1); show as "Every X mo" on the card
+- Only display if frequency <= 12 months
+- Example: 1 on Jan 1, 3 on Jun 1, 1 on Sep 1 → 5 total, 8-month span → 8/4 = 2 mo → "Every 2 mo"
+
+**S&S eligibility:** Show S&S icon if any past order of that item used S&S (known-eligible from history). See Item 11b for future improvement.
+
+**UI changes:**
+- Add "Quantity" tab button in `index.html` after "Decide", styled as `tab-action`
+- Tab count shows number of deduplicated items (not total quantity)
+- Hide the S&S checkbox when Quantity tab is active (per requirement to remove S&S filter)
+- New `renderQuantityCard(group)` function — simplified card with:
+  - Thumbnail, title (linked to Amazon), status badge ("Delivered")
+  - **New badge**: "Qty: X" showing total quantity
+  - **New badge**: "Every X mo" if frequency <= 12 months
+  - **S&S icon**: if any past order used S&S (meaning "S&S eligible")
+  - Price: show most recent unit price if available
+  - **Removed**: order date, return window, return policy icon, keep button
+- New `renderQuantityView()` function that deduplicates, aggregates, sorts by totalQuantity desc, and renders
+
+**Files to modify:**
+- `order_logic.js` — add `groupItemsByAsin(items)` pure function (testable)
+- `app.js` — add `renderQuantityCard()`, `renderQuantityView()`, update `refreshView()`, `filterItems()`, `computeTabCounts()`, hide/show S&S checkbox
+- `index.html` — add Quantity tab button
+- `style.css` — minor styling for qty/frequency badges
+- Tests: new unit tests for `groupItemsByAsin`, new E2E tests for the Quantity view
+
+---
+
+## Item 11b: S&S eligibility enrichment
+
+Add S&S eligibility detection to `fetch_orders.py`'s ASIN cache (similar to how return policy is fetched from product pages). Scrape each product's Amazon page to determine if it offers Subscribe & Save, and store the result in `asin_cache.json`. The Quantity view can then show the S&S icon for truly eligible items, not just ones previously ordered via S&S.
+
 ---
 
 ## Item 12: Plug in stores ✅ (merged PR #39)

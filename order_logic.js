@@ -369,6 +369,77 @@ function initialYears(manifest) {
 }
 
 // ---------------------------------------------------------------------------
+// Quantity Insights — group items by ASIN for the "Quantity" view
+// ---------------------------------------------------------------------------
+const QUANTITY_STATUSES = new Set(["Delivered", "Ordered", "Shipped"]);
+
+function groupItemsByAsin(items) {
+  const byAsin = new Map();
+
+  for (const item of items) {
+    const status = effectiveStatus(item);
+    if (!QUANTITY_STATUSES.has(status)) continue;
+    if (!item.asin) continue;
+
+    if (!byAsin.has(item.asin)) {
+      byAsin.set(item.asin, []);
+    }
+    byAsin.get(item.asin).push(item);
+  }
+
+  const result = [];
+  for (const [asin, orders] of byAsin) {
+    const totalQuantity = orders.reduce((sum, o) => sum + (o.quantity || 1), 0);
+    if (totalQuantity < 2) continue;
+
+    // Sort orders by date ascending for frequency calculation
+    orders.sort((a, b) => (a.order_date || "").localeCompare(b.order_date || ""));
+    const mostRecent = orders[orders.length - 1];
+
+    // Find the best unit_price — prefer most recent non-null, else any non-null
+    let unitPrice = mostRecent.unit_price;
+    if (unitPrice === null || unitPrice === undefined) {
+      for (let i = orders.length - 2; i >= 0; i--) {
+        if (orders[i].unit_price !== null && orders[i].unit_price !== undefined) {
+          unitPrice = orders[i].unit_price;
+          break;
+        }
+      }
+    }
+
+    // Frequency: consumption rate = span / (totalQuantity - 1)
+    let frequencyMonths = null;
+    const firstDate = new Date(orders[0].order_date + "T00:00:00");
+    const lastDate = new Date(mostRecent.order_date + "T00:00:00");
+    const spanMs = lastDate - firstDate;
+    if (spanMs > 0 && totalQuantity > 1) {
+      const spanMonths = spanMs / (1000 * 60 * 60 * 24 * 30.44);
+      const rawFreq = spanMonths / (totalQuantity - 1);
+      const rounded = Math.max(1, Math.round(rawFreq));
+      frequencyMonths = rounded <= 12 ? rounded : null;
+    }
+
+    const snsEligible = orders.some(o => o.subscribe_and_save);
+
+    result.push({
+      asin,
+      title: mostRecent.title,
+      image_link: mostRecent.image_link,
+      item_link: mostRecent.item_link,
+      unit_price: unitPrice,
+      totalQuantity,
+      orderCount: orders.length,
+      frequencyMonths,
+      snsEligible,
+    });
+  }
+
+  // Sort by totalQuantity descending
+  result.sort((a, b) => b.totalQuantity - a.totalQuantity);
+  return result;
+}
+
+// ---------------------------------------------------------------------------
 // Node.js exports (conditional — only active in Node, no-op in browser)
 // ---------------------------------------------------------------------------
 if (typeof module !== "undefined" && module.exports) {
@@ -399,5 +470,6 @@ if (typeof module !== "undefined" && module.exports) {
     isDecideEligible,
     isMailBackEligible,
     initialYears,
+    groupItemsByAsin,
   };
 }

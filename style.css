@@ -279,6 +279,10 @@ header h1 {
 .badge-return-only  { background: #fef9c3; color: #854d0e; } /* yellow */
 .badge-no-return    { background: #fee2e2; color: #b91c1c; } /* red    */
 
+/* ── Quantity view badges ── */
+.badge-quantity  { background: #ede9fe; color: #6d28d9; } /* purple */
+.badge-frequency { background: #dbeafe; color: #1d4ed8; } /* blue   */
+
 /* ── Keep button ── */
 .keep-btn {
   position: absolute;
