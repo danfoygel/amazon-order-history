@@ -434,8 +434,8 @@ function renderQuantityCard(group) {
     ? `<span class="badge badge-frequency">Every ${group.frequencyMonths} mo</span>`
     : "";
 
-  const snsHtml = group.snsEligible
-    ? `<span class="icon-badge badge-sns" title="S&amp;S eligible"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span>`
+  const snsHtml = group.subscribe_and_save
+    ? `<span class="icon-badge badge-sns" title="Subscribe &amp; Save"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span>`
     : "";
 
   const thumbHtml = group.image_link
@@ -458,7 +458,7 @@ function renderQuantityCard(group) {
         </div>
         <div class="card-meta">
           ${priceHtml}
-          <span>${group.orderCount} order${group.orderCount !== 1 ? "s" : ""}</span>
+          <span>${group.orderCount} orders · ${formatDate(group.oldestOrderDate)} – ${formatDate(group.newestOrderDate)}</span>
         </div>
       </div>
     </div>

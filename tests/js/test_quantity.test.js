@@ -42,7 +42,7 @@ describe("groupItemsByAsin", () => {
     expect(groups[0].totalQuantity).toBe(4);
   });
 
-  it("filters out groups with totalQuantity < 2", () => {
+  it("filters out items with only a single order", () => {
     const items = [
       makeItem({ asin: "B001", order_id: "AAA", item_id: "AAA__B001", quantity: 1 }),
     ];
@@ -50,13 +50,12 @@ describe("groupItemsByAsin", () => {
     expect(groups).toHaveLength(0);
   });
 
-  it("includes groups where a single order has quantity >= 2", () => {
+  it("filters out single orders even with quantity >= 2", () => {
     const items = [
-      makeItem({ asin: "B001", order_id: "AAA", item_id: "AAA__B001", quantity: 3 }),
+      makeItem({ asin: "B001", order_id: "AAA", item_id: "AAA__B001", quantity: 5 }),
     ];
     const groups = groupItemsByAsin(items);
-    expect(groups).toHaveLength(1);
-    expect(groups[0].totalQuantity).toBe(3);
+    expect(groups).toHaveLength(0);
   });
 
   it("uses the most recent order for title, image, and item_link", () => {
@@ -70,32 +69,37 @@ describe("groupItemsByAsin", () => {
     expect(groups[0].item_link).toBe("new_link");
   });
 
-  it("sorts results by totalQuantity descending", () => {
+  it("sorts results by most recent order date descending", () => {
     const items = [
-      makeItem({ asin: "B001", order_id: "A1", item_id: "A1__B001", quantity: 2 }),
-      makeItem({ asin: "B002", order_id: "A2", item_id: "A2__B002", quantity: 5 }),
-      makeItem({ asin: "B003", order_id: "A3", item_id: "A3__B003", quantity: 3 }),
+      makeItem({ asin: "B001", order_id: "A1", item_id: "A1__B001", order_date: "2024-01-01", quantity: 1 }),
+      makeItem({ asin: "B001", order_id: "A1b", item_id: "A1b__B001", order_date: "2025-03-01", quantity: 1 }),
+      makeItem({ asin: "B002", order_id: "A2", item_id: "A2__B002", order_date: "2024-06-01", quantity: 3 }),
+      makeItem({ asin: "B002", order_id: "A2b", item_id: "A2b__B002", order_date: "2025-09-01", quantity: 2 }),
+      makeItem({ asin: "B003", order_id: "A3", item_id: "A3__B003", order_date: "2024-02-01", quantity: 1 }),
+      makeItem({ asin: "B003", order_id: "A3b", item_id: "A3b__B003", order_date: "2025-06-01", quantity: 1 }),
     ];
     const groups = groupItemsByAsin(items);
+    // B002 newest=2025-09, B003 newest=2025-06, B001 newest=2025-03
     expect(groups.map(g => g.asin)).toEqual(["B002", "B003", "B001"]);
   });
 
-  it("detects S&S eligibility from any order", () => {
+  it("uses subscribe_and_save from the most recent order", () => {
+    const items = [
+      makeItem({ asin: "B001", order_id: "AAA", item_id: "AAA__B001", order_date: "2025-01-01", subscribe_and_save: true, quantity: 1 }),
+      makeItem({ asin: "B001", order_id: "BBB", item_id: "BBB__B001", order_date: "2025-06-01", subscribe_and_save: false, quantity: 1 }),
+    ];
+    const groups = groupItemsByAsin(items);
+    // Most recent order (BBB, 2025-06) has S&S=false
+    expect(groups[0].subscribe_and_save).toBe(false);
+  });
+
+  it("shows subscribe_and_save true when most recent order used it", () => {
     const items = [
       makeItem({ asin: "B001", order_id: "AAA", item_id: "AAA__B001", order_date: "2025-01-01", subscribe_and_save: false, quantity: 1 }),
       makeItem({ asin: "B001", order_id: "BBB", item_id: "BBB__B001", order_date: "2025-06-01", subscribe_and_save: true, quantity: 1 }),
     ];
     const groups = groupItemsByAsin(items);
-    expect(groups[0].snsEligible).toBe(true);
-  });
-
-  it("marks S&S as false when no order used S&S", () => {
-    const items = [
-      makeItem({ asin: "B001", order_id: "AAA", item_id: "AAA__B001", quantity: 1 }),
-      makeItem({ asin: "B001", order_id: "BBB", item_id: "BBB__B001", quantity: 1 }),
-    ];
-    const groups = groupItemsByAsin(items);
-    expect(groups[0].snsEligible).toBe(false);
+    expect(groups[0].subscribe_and_save).toBe(true);
   });
 
   // --- Frequency calculation ---
@@ -109,14 +113,6 @@ describe("groupItemsByAsin", () => {
     ];
     const groups = groupItemsByAsin(items);
     expect(groups[0].frequencyMonths).toBe(2);
-  });
-
-  it("returns null frequency for a single order date (bulk buy)", () => {
-    const items = [
-      makeItem({ asin: "B001", order_id: "AAA", item_id: "AAA__B001", order_date: "2025-01-01", quantity: 5 }),
-    ];
-    const groups = groupItemsByAsin(items);
-    expect(groups[0].frequencyMonths).toBeNull();
   });
 
   it("returns null frequency when all orders are on the same date", () => {
@@ -139,13 +135,13 @@ describe("groupItemsByAsin", () => {
   });
 
   it("rounds frequency to nearest whole month", () => {
-    // 1 on Jan 1, 1 on Apr 15 => 2 total, ~3.5 months => 3.5/1 = 3.5 => rounds to 4
+    // 1 on Jan 1, 1 on Apr 15 => 2 total, ~3.5 months => 3.5/1 = 3.5 => rounds to 3
     const items = [
       makeItem({ asin: "B001", order_id: "A1", item_id: "A1__B001", order_date: "2025-01-01", quantity: 1 }),
       makeItem({ asin: "B001", order_id: "A2", item_id: "A2__B001", order_date: "2025-04-15", quantity: 1 }),
     ];
     const groups = groupItemsByAsin(items);
-    expect(groups[0].frequencyMonths).toBe(3); // ~3.46 months rounds to 3
+    expect(groups[0].frequencyMonths).toBe(3);
   });
 
   it("clamps frequency minimum to 1 month", () => {
@@ -173,16 +169,15 @@ describe("groupItemsByAsin", () => {
       makeItem({ asin: "B001", order_id: "A2", item_id: "A2__B001", order_date: "2025-06-01", unit_price: null, quantity: 1 }),
     ];
     const groups = groupItemsByAsin(items);
-    // Most recent has null, so fall back to the one that has a price
     expect(groups[0].unit_price).toBe(5.99);
   });
 
   it("handles multiple ASINs correctly", () => {
     const items = [
-      makeItem({ asin: "B001", order_id: "A1", item_id: "A1__B001", quantity: 2 }),
-      makeItem({ asin: "B002", order_id: "A2", item_id: "A2__B002", quantity: 3 }),
-      makeItem({ asin: "B001", order_id: "A3", item_id: "A3__B001", quantity: 1 }),
-      makeItem({ asin: "B002", order_id: "A4", item_id: "A4__B002", quantity: 2 }),
+      makeItem({ asin: "B001", order_id: "A1", item_id: "A1__B001", order_date: "2025-01-01", quantity: 2 }),
+      makeItem({ asin: "B002", order_id: "A2", item_id: "A2__B002", order_date: "2025-03-01", quantity: 3 }),
+      makeItem({ asin: "B001", order_id: "A3", item_id: "A3__B001", order_date: "2025-02-01", quantity: 1 }),
+      makeItem({ asin: "B002", order_id: "A4", item_id: "A4__B002", order_date: "2025-04-01", quantity: 2 }),
     ];
     const groups = groupItemsByAsin(items);
     expect(groups).toHaveLength(2);
@@ -190,7 +185,7 @@ describe("groupItemsByAsin", () => {
     const b001 = groups.find(g => g.asin === "B001");
     expect(b002.totalQuantity).toBe(5);
     expect(b001.totalQuantity).toBe(3);
-    // B002 should come first (sorted by qty desc)
+    // Sorted by newest order date: B002 (2025-04) before B001 (2025-02)
     expect(groups[0].asin).toBe("B002");
   });
 
@@ -201,5 +196,18 @@ describe("groupItemsByAsin", () => {
     ];
     const groups = groupItemsByAsin(items);
     expect(groups[0].orderCount).toBe(2);
+  });
+
+  // --- Date range ---
+
+  it("includes oldest and newest order dates", () => {
+    const items = [
+      makeItem({ asin: "B001", order_id: "A1", item_id: "A1__B001", order_date: "2024-03-15", quantity: 1 }),
+      makeItem({ asin: "B001", order_id: "A2", item_id: "A2__B001", order_date: "2025-06-01", quantity: 1 }),
+      makeItem({ asin: "B001", order_id: "A3", item_id: "A3__B001", order_date: "2024-11-20", quantity: 1 }),
+    ];
+    const groups = groupItemsByAsin(items);
+    expect(groups[0].oldestOrderDate).toBe("2024-03-15");
+    expect(groups[0].newestOrderDate).toBe("2025-06-01");
   });
 });

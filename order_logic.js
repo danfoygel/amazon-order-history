@@ -389,12 +389,15 @@ function groupItemsByAsin(items) {
 
   const result = [];
   for (const [asin, orders] of byAsin) {
+    // Only include items with multiple distinct orders
+    if (orders.length < 2) continue;
+
     const totalQuantity = orders.reduce((sum, o) => sum + (o.quantity || 1), 0);
-    if (totalQuantity < 2) continue;
 
     // Sort orders by date ascending for frequency calculation
     orders.sort((a, b) => (a.order_date || "").localeCompare(b.order_date || ""));
     const mostRecent = orders[orders.length - 1];
+    const oldest = orders[0];
 
     // Find the best unit_price — prefer most recent non-null, else any non-null
     let unitPrice = mostRecent.unit_price;
@@ -409,7 +412,7 @@ function groupItemsByAsin(items) {
 
     // Frequency: consumption rate = span / (totalQuantity - 1)
     let frequencyMonths = null;
-    const firstDate = new Date(orders[0].order_date + "T00:00:00");
+    const firstDate = new Date(oldest.order_date + "T00:00:00");
     const lastDate = new Date(mostRecent.order_date + "T00:00:00");
     const spanMs = lastDate - firstDate;
     if (spanMs > 0 && totalQuantity > 1) {
@@ -418,8 +421,6 @@ function groupItemsByAsin(items) {
       const rounded = Math.max(1, Math.round(rawFreq));
       frequencyMonths = rounded <= 12 ? rounded : null;
     }
-
-    const snsEligible = orders.some(o => o.subscribe_and_save);
 
     result.push({
       asin,
@@ -430,12 +431,14 @@ function groupItemsByAsin(items) {
       totalQuantity,
       orderCount: orders.length,
       frequencyMonths,
-      snsEligible,
+      subscribe_and_save: mostRecent.subscribe_and_save || false,
+      oldestOrderDate: oldest.order_date,
+      newestOrderDate: mostRecent.order_date,
     });
   }
 
-  // Sort by totalQuantity descending
-  result.sort((a, b) => b.totalQuantity - a.totalQuantity);
+  // Sort by most recent order date descending
+  result.sort((a, b) => (b.newestOrderDate || "").localeCompare(a.newestOrderDate || ""));
   return result;
 }
 

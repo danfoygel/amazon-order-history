@@ -708,16 +708,16 @@ test.describe('Quantity view', () => {
     expect(count).toBe(3);
   });
 
-  test('Quantity view shows deduplicated item cards sorted by quantity desc', async ({ page }) => {
+  test('Quantity view shows deduplicated item cards sorted by most recent order date', async ({ page }) => {
     await loadAllAndClickQuantity(page);
     const cards = page.locator('.item-card');
     const count = await cards.count();
     expect(count).toBe(3);
 
-    // Both B07NXG4NV9 and B07JJP4XTL have qty 3; B00004YMGF has qty 2
-    // The last card should be B00004YMGF (qty 2)
-    const lastCardQty = await cards.last().locator('.badge-quantity').textContent();
-    expect(lastCardQty).toBe('Qty: 2');
+    // B07JJP4XTL newest=2025-01-05, B07NXG4NV9 newest=2025-01-03, B00004YMGF newest=2025-01-01
+    // First card should be B07JJP4XTL (most recently ordered)
+    const firstAsin = await cards.first().getAttribute('data-asin');
+    expect(firstAsin).toBe('B07JJP4XTL');
   });
 
   test('Quantity cards show total quantity badge', async ({ page }) => {
@@ -736,12 +736,12 @@ test.describe('Quantity view', () => {
     expect(freqCount).toBeGreaterThan(0);
   });
 
-  test('Quantity cards show S&S icon for items with S&S history', async ({ page }) => {
+  test('Quantity cards show S&S icon when most recent order used S&S', async ({ page }) => {
     await loadAllAndClickQuantity(page);
-    // B07NXG4NV9 has subscribe_and_save=true in both 2024 and 2025 orders
+    // B07NXG4NV9 has subscribe_and_save=true on its most recent order (2025-01-03)
     const snsIcons = page.locator('.badge-sns');
     const snsCount = await snsIcons.count();
-    expect(snsCount).toBe(1); // Only one item has S&S
+    expect(snsCount).toBe(1); // Only one item's latest order used S&S
   });
 
   test('Quantity cards do not show order date, return window, or keep button', async ({ page }) => {
@@ -776,12 +776,13 @@ test.describe('Quantity view', () => {
     expect(await cardCount(page)).toBe(1);
   });
 
-  test('Quantity cards show order count in meta', async ({ page }) => {
+  test('Quantity cards show order count and date range in meta', async ({ page }) => {
     await loadAllAndClickQuantity(page);
     const metas = await page.locator('.card-meta').allTextContents();
-    // All items have 2 orders
+    // All items have 2 orders with date ranges
     for (const meta of metas) {
       expect(meta).toContain('2 orders');
+      expect(meta).toContain('–'); // date range separator
     }
   });
 });
