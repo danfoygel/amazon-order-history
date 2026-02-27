@@ -910,6 +910,152 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("graph-modal").addEventListener("click", e => {
     if (e.target === e.currentTarget) closeGraphModal();
   });
+
+  // -------------------------------------------------------------------------
+  // Keyboard navigation
+  // -------------------------------------------------------------------------
+  let focusedCardIndex = -1;
+
+  function getVisibleCards() {
+    return Array.from(document.querySelectorAll(".item-card"));
+  }
+
+  function setCardFocus(index) {
+    const cards = getVisibleCards();
+    // Clear previous focus
+    const prev = document.querySelector(".item-card.card-focused");
+    if (prev) prev.classList.remove("card-focused");
+
+    if (index < 0 || index >= cards.length) {
+      focusedCardIndex = -1;
+      return;
+    }
+    focusedCardIndex = index;
+    cards[index].classList.add("card-focused");
+    cards[index].scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }
+
+  // Reset card focus when the view changes
+  const _origRefreshView = refreshView;
+  refreshView = function() {
+    focusedCardIndex = -1;
+    _origRefreshView();
+  };
+
+  document.addEventListener("keydown", e => {
+    const tag = (e.target.tagName || "").toLowerCase();
+    const inInput = tag === "input" || tag === "textarea" || tag === "select" || e.target.isContentEditable;
+    const modal = document.getElementById("graph-modal");
+    const modalOpen = modal && modal.open;
+
+    // Escape: close modal or clear search
+    if (e.key === "Escape") {
+      if (modalOpen) {
+        closeGraphModal();
+        e.preventDefault();
+        return;
+      }
+      const searchInput = document.getElementById("search-input");
+      if (searchInput.value) {
+        searchInput.value = "";
+        searchInput.dispatchEvent(new Event("input"));
+        searchInput.blur();
+        e.preventDefault();
+        return;
+      }
+      // Clear card focus
+      if (focusedCardIndex >= 0) {
+        setCardFocus(-1);
+        e.preventDefault();
+        return;
+      }
+      return;
+    }
+
+    // Don't intercept shortcuts when typing in an input
+    if (inInput) return;
+    // Don't intercept when modal is open
+    if (modalOpen) return;
+
+    // "/" or Ctrl+K — focus search bar
+    if (e.key === "/" || (e.key === "k" && (e.ctrlKey || e.metaKey))) {
+      e.preventDefault();
+      document.getElementById("search-input").focus();
+      return;
+    }
+
+    // 1–9 — switch to the Nth visible tab
+    if (e.key >= "1" && e.key <= "9" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      const visibleTabs = Array.from(document.querySelectorAll(".tab")).filter(
+        t => t.offsetParent !== null && t.style.display !== "none"
+      );
+      const idx = parseInt(e.key, 10) - 1;
+      if (idx < visibleTabs.length) {
+        visibleTabs[idx].click();
+        e.preventDefault();
+      }
+      return;
+    }
+
+    // Arrow keys — navigate between item cards
+    // Left/Right move by 1; Up/Down jump by row (grid column count)
+    if (e.key === "ArrowRight") {
+      const cards = getVisibleCards();
+      if (cards.length === 0) return;
+      const next = focusedCardIndex < 0 ? 0 : Math.min(focusedCardIndex + 1, cards.length - 1);
+      setCardFocus(next);
+      e.preventDefault();
+      return;
+    }
+    if (e.key === "ArrowLeft") {
+      const cards = getVisibleCards();
+      if (cards.length === 0) return;
+      const prev = focusedCardIndex <= 0 ? 0 : focusedCardIndex - 1;
+      setCardFocus(prev);
+      e.preventDefault();
+      return;
+    }
+    if ((e.key === "ArrowDown" || e.key === "ArrowUp") && focusedCardIndex >= 0) {
+      const cards = getVisibleCards();
+      if (cards.length === 0) return;
+      // Find the card visually above/below with the closest horizontal center.
+      // This works across section boundaries in the combined view.
+      const cur = cards[focusedCardIndex].getBoundingClientRect();
+      const curCenterX = cur.left + cur.width / 2;
+      const curCenterY = cur.top + cur.height / 2;
+      let bestIdx = focusedCardIndex;
+      let bestDist = Infinity;
+      for (let i = 0; i < cards.length; i++) {
+        if (i === focusedCardIndex) continue;
+        const r = cards[i].getBoundingClientRect();
+        const cy = r.top + r.height / 2;
+        // Only consider cards in the correct direction
+        if (e.key === "ArrowDown" && cy <= curCenterY) continue;
+        if (e.key === "ArrowUp" && cy >= curCenterY) continue;
+        const dx = Math.abs((r.left + r.width / 2) - curCenterX);
+        const dy = Math.abs(cy - curCenterY);
+        // Prefer same column (small dx), break ties by proximity (small dy)
+        const dist = dx * 10000 + dy;
+        if (dist < bestDist) { bestDist = dist; bestIdx = i; }
+      }
+      setCardFocus(bestIdx);
+      e.preventDefault();
+      return;
+    }
+
+    // Enter — open the focused card's Amazon order page
+    if (e.key === "Enter" && focusedCardIndex >= 0) {
+      const cards = getVisibleCards();
+      if (focusedCardIndex < cards.length) {
+        const link = cards[focusedCardIndex].querySelector("a[href]");
+        if (link) {
+          window.open(link.href, "_blank", "noopener");
+          e.preventDefault();
+        }
+      }
+      return;
+    }
+  });
 });
 
 init();

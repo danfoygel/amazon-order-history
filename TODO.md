@@ -171,19 +171,9 @@ Badge colors, graph colors, and the modal backdrop all need dark variants.
 
 ---
 
-## Item 25: Keyboard navigation
+## Item 25: Keyboard navigation ✅ (merged PR #50)
 
-*Automatically suggested by Claude Code on 2026-02-25.*
-
-Add keyboard shortcuts for power users:
-
-- `/` or `Ctrl+K` to focus the search bar
-- `1`–`9` (or `Ctrl+1`–`Ctrl+9`) to switch tabs
-- `j`/`k` to move between item cards (highlight with a focus ring)
-- `Enter` on a focused card to open the Amazon order page
-- `Escape` to clear search / close the graph modal (graph modal already handles backdrop click but not Escape)
-
-Lightweight — just a single `keydown` listener on `document`.
+Added keyboard shortcuts via a single `keydown` listener: `/` or `Ctrl+K` to focus search, `1`–`9` to switch tabs, arrow keys to navigate cards (with orange focus ring, maintaining column across section boundaries), `Enter` to open the focused card's Amazon page, `Escape` to close modal/clear search/unfocus. 10 new E2E tests.
 
 ---
 
