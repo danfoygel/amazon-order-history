@@ -109,7 +109,7 @@ Your Amazon credentials are stored in `.env`, which is gitignored. Never commit 
 
 ## Tests
 
-Three test layers cover the Python backend, JavaScript logic, and the full web UI.
+Four test layers cover the Python backend, JavaScript logic, the full web UI, and visual regression.
 
 ### Prerequisites
 
@@ -154,4 +154,16 @@ npm test
 npm run test:e2e
 ```
 
-Playwright automatically starts a local HTTP server on port 8456 for the E2E tests — no manual server setup is needed.
+**Visual regression tests** — Playwright screenshot comparisons that catch unintended UI changes across full-page views, individual card types, and responsive layouts:
+
+```
+npm run test:visual
+```
+
+To update baselines after intentional UI changes:
+
+```
+npx playwright test tests/e2e/test_visual.spec.js --update-snapshots
+```
+
+Playwright automatically starts a local HTTP server on port 8456 for all browser tests — no manual server setup is needed.
