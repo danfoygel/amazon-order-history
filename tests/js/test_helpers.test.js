@@ -9,6 +9,8 @@ const {
   returnPolicyIcon,
   orderUrl,
   returnWindowHtml,
+  estimateReturnWindowEnd,
+  ESTIMATED_RETURN_WINDOW_DAYS,
   initialYears,
   isDecideEligible,
   isMailBackEligible,
@@ -189,6 +191,27 @@ describe("orderUrl", () => {
 });
 
 // ---------------------------------------------------------------------------
+// estimateReturnWindowEnd
+// ---------------------------------------------------------------------------
+describe("estimateReturnWindowEnd", () => {
+  it("returns order_date + 33 days", () => {
+    expect(estimateReturnWindowEnd("2025-06-01")).toBe("2025-07-04");
+  });
+
+  it("handles year boundary", () => {
+    expect(estimateReturnWindowEnd("2025-12-10")).toBe("2026-01-12");
+  });
+
+  it("returns null for null order_date", () => {
+    expect(estimateReturnWindowEnd(null)).toBeNull();
+  });
+
+  it("returns null for undefined order_date", () => {
+    expect(estimateReturnWindowEnd(undefined)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // returnWindowHtml
 // ---------------------------------------------------------------------------
 describe("returnWindowHtml", () => {
@@ -283,10 +306,23 @@ describe("returnWindowHtml", () => {
     expect(html).toContain("Mail back by");
   });
 
-  it("returns unknown deadline badge for Return Started item without return_window_end", () => {
+  it("estimates deadline for Return Started item without return_window_end", () => {
     const item = {
       delivery_status: "Return started",
       order_date: "2025-06-01",
+      tracking_url: null,
+      return_window_end: null,
+    };
+    const html = returnWindowHtml(item);
+    // Estimated: order_date + 33 days = 2025-07-04, ~23 days away → ok badge
+    expect(html).toContain("return-badge-ok");
+    expect(html).toContain("Mail back by ~");
+  });
+
+  it("returns unknown deadline badge when both return_window_end and order_date are null", () => {
+    const item = {
+      delivery_status: "Return started",
+      order_date: null,
       tracking_url: null,
       return_window_end: null,
     };
