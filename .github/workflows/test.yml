@@ -23,7 +23,7 @@ jobs:
 
       - run: npm ci
       - run: npx playwright install --with-deps chromium
-      - run: pip install pytest beautifulsoup4
+      - run: pip install pytest beautifulsoup4 python-dateutil
 
       - name: JavaScript tests
         run: npx vitest run
