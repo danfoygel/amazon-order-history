@@ -4,7 +4,7 @@
 // order_logic.js — Pure logic functions for the Order History app.
 //
 // Single source of truth for status derivation, sorting, formatting, and
-// display helpers.  Rules are loaded from status_rules.js (shared with
+// display helpers.  Rules are loaded from status_rules.json (shared with
 // fetch_orders.py).
 //
 // Browser: loaded as a plain <script> before app.js; functions become globals.
@@ -15,11 +15,11 @@
 // Status rules + known-issue overrides
 // ---------------------------------------------------------------------------
 const _rulesData = (typeof require !== "undefined")
-  ? require("./status_rules.js")
-  : STATUS_RULES_DATA;  // global set by status_rules.js <script> tag
+  ? require("./status_rules.json")
+  : (typeof _ORDER_LOGIC_STATUS_RULES !== "undefined" ? _ORDER_LOGIC_STATUS_RULES : {rules: [], assume_delivered_after_days: 90});
 
-const STATUS_RULES = _rulesData.rules;
-const ASSUME_DELIVERED_AFTER_DAYS = _rulesData.assume_delivered_after_days;
+let STATUS_RULES = _rulesData.rules;
+let ASSUME_DELIVERED_AFTER_DAYS = _rulesData.assume_delivered_after_days;
 
 // Known-status overrides (item_id → status).  Gracefully returns {} if the
 // file is absent (e.g. fresh clone without a data/ directory).
@@ -28,17 +28,23 @@ const _knownStatusData = (typeof require !== "undefined")
       try { return require("./data/known_status_issues.json"); }
       catch { return {}; }
     })()
-  : (function() {
-      try {
-        var xhr = new XMLHttpRequest();
-        xhr.open("GET", "data/known_status_issues.json", false);
-        xhr.send();
-        if (xhr.status === 200) return JSON.parse(xhr.responseText);
-      } catch {}
-      return {};
-    })();
+  : (typeof _ORDER_LOGIC_KNOWN_STATUS !== "undefined" ? _ORDER_LOGIC_KNOWN_STATUS : {});
 
-const KNOWN_STATUS_OVERRIDES = _knownStatusData.items || {};
+let KNOWN_STATUS_OVERRIDES = _knownStatusData.items || {};
+
+/**
+ * Inject pre-fetched JSON data (called by app.js after fetching JSON files).
+ * Must be called before init() processes any items.
+ */
+function _initOrderLogicData(statusRules, knownStatus) {
+  if (statusRules) {
+    STATUS_RULES = statusRules.rules;
+    ASSUME_DELIVERED_AFTER_DAYS = statusRules.assume_delivered_after_days;
+  }
+  if (knownStatus) {
+    KNOWN_STATUS_OVERRIDES = knownStatus.items || {};
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Status derivation
@@ -367,9 +373,10 @@ function initialYears(manifest) {
 // ---------------------------------------------------------------------------
 if (typeof module !== "undefined" && module.exports) {
   module.exports = {
-    STATUS_RULES,
-    ASSUME_DELIVERED_AFTER_DAYS,
-    KNOWN_STATUS_OVERRIDES,
+    get STATUS_RULES() { return STATUS_RULES; },
+    get ASSUME_DELIVERED_AFTER_DAYS() { return ASSUME_DELIVERED_AFTER_DAYS; },
+    get KNOWN_STATUS_OVERRIDES() { return KNOWN_STATUS_OVERRIDES; },
+    _initOrderLogicData,
     WEEKDAY_NAMES,
     MONTH_NAMES,
     hasShipmentId,

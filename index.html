@@ -48,15 +48,11 @@
     </div>
   </dialog>
 
-  <!-- Step 1: manifest sets window.ORDER_DATA_MANIFEST and window.ORDER_DATA_YEAR_COUNTS -->
-  <script src="data/app_data_manifest.js"></script>
-  <!-- Step 2: Chart.js (for graph modal) -->
+  <!-- Step 1: Chart.js (for graph modal) -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-  <!-- Step 3: status rules (shared with fetch_orders.py) -->
-  <script src="status_rules.js"></script>
-  <!-- Step 4: status derivation, sorting, formatting, rendering helpers -->
+  <!-- Step 2: status derivation, sorting, formatting, rendering helpers -->
   <script src="order_logic.js"></script>
-  <!-- Step 5: app logic — dynamically loads only the year files it needs -->
+  <!-- Step 3: app logic — fetches JSON data files, then renders -->
   <script src="app.js"></script>
 </body>
 </html>

@@ -4,7 +4,7 @@
 // ---------------------------------------------------------------------------
 // validate_data.js — CLI tool to validate status parsing on data files.
 //
-// Loads each data/app_data_YYYY.js file in reverse chronological order and
+// Loads each data/app_data_YYYY.json file in reverse chronological order and
 // runs the same deriveStatus / effectiveStatus / parseExpectedDelivery logic
 // used by the browser app.  Prints errors for anything that cannot be parsed.
 //
@@ -37,16 +37,10 @@ const VALID_RETURN_STATUSES = new Set([
 ]);
 
 // ---------------------------------------------------------------------------
-// Parse a data file.  Format: window.ORDER_DATA_YYYY = { ... };
+// Parse a data file.  Format: pure JSON { ... }
 // ---------------------------------------------------------------------------
 function loadDataFile(filePath) {
-  const src = fs.readFileSync(filePath, "utf-8");
-  // Extract JSON between the first `=` and the trailing `;`
-  const eqIdx = src.indexOf("=");
-  if (eqIdx === -1) throw new Error(`No '=' found in ${filePath}`);
-  let json = src.slice(eqIdx + 1).trim();
-  if (json.endsWith(";")) json = json.slice(0, -1).trim();
-  return JSON.parse(json);
+  return JSON.parse(fs.readFileSync(filePath, "utf-8"));
 }
 
 // ---------------------------------------------------------------------------
@@ -124,7 +118,7 @@ function main() {
 
   // Discover year files and sort in reverse chronological order
   const yearFiles = fs.readdirSync(dataDir)
-    .filter(f => /^app_data_\d{4}\.js$/.test(f))
+    .filter(f => /^app_data_\d{4}\.json$/.test(f))
     .sort((a, b) => {
       const ya = parseInt(a.match(/\d{4}/)[0], 10);
       const yb = parseInt(b.match(/\d{4}/)[0], 10);
@@ -132,7 +126,7 @@ function main() {
     });
 
   if (yearFiles.length === 0) {
-    console.error(`No app_data_YYYY.js files found in ${dataDir}`);
+    console.error(`No app_data_YYYY.json files found in ${dataDir}`);
     process.exit(1);
   }
 

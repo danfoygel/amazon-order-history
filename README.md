@@ -21,7 +21,7 @@ Edit `.env` and fill in your Amazon email and password. If your account uses TOT
 
 ### 3. Fetch your orders
 
-Order data is stored in per-year files (`data/app_data_2025.js`, `data/app_data_2024.js`, etc.) plus a manifest file (`data/app_data_manifest.js`) that tells the app which years are available.
+Order data is stored in per-year JSON files (`data/app_data_2025.json`, `data/app_data_2024.json`, etc.) plus a manifest file (`data/app_data_manifest.json`) that tells the app which years are available.
 
 **Incremental refresh** (run this daily, e.g. via cron) — fetches the last 3 months and merges into the appropriate year file(s):
 
@@ -61,17 +61,13 @@ Each command takes a minute or two per year fetched.
 
 ### 4. Open the app
 
-The simplest option is to open `index.html` directly in your browser as a `file://` URL — just double-click it in Finder. Data is loaded via a `<script>` tag rather than `fetch()`, so this works without a server.
-
-Alternatively, serve the directory with Python's built-in server (useful if you prefer `http://` or run into any browser restrictions):
+Serve the directory with Python's built-in server:
 
 ```
 python3 -m http.server 8080
 ```
 
 Then open [http://localhost:8080](http://localhost:8080).
-
-**Note on localStorage:** Keep decisions are stored in `localStorage`, which is scoped to the origin. If you switch between `file://` and `http://localhost`, they won't share the same kept-item state.
 
 ---
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-fetch_orders.py — Scrapes Amazon order history and writes year-partitioned JS data files.
+fetch_orders.py — Scrapes Amazon order history and writes year-partitioned JSON data files.
 
 Usage:
     python fetch_orders.py                # incremental: last 3 months, merged into year file(s)
@@ -10,8 +10,8 @@ Usage:
 Reads credentials from .env (copy .env.example to .env and fill in values).
 
 Data files written:
-    data/app_data_YYYY.js         one file per calendar year
-    data/app_data_manifest.js     lists available years; loaded by index.html
+    data/app_data_YYYY.json         one file per calendar year
+    data/app_data_manifest.json     lists available years; loaded by index.html
 """
 
 import argparse
@@ -538,22 +538,10 @@ def build_items_from_orders(orders: list) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 def _load_status_keywords() -> list[str]:
-    """Load STATUS_RULES patterns from status_rules.js (single source of truth).
-
-    The JS file contains a JSON object between marker comments
-    ``// --- BEGIN JSON ---`` and ``// --- END JSON ---``.
-    """
-    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "status_rules.js")
+    """Load STATUS_RULES patterns from status_rules.json (single source of truth)."""
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "status_rules.json")
     with open(p, encoding="utf-8") as f:
-        text = f.read()
-    # Extract the JSON object assigned to STATUS_RULES_DATA
-    start = text.index("// --- BEGIN JSON ---")
-    end = text.index("// --- END JSON ---")
-    fragment = text[start:end]
-    # Strip the "var STATUS_RULES_DATA = " prefix to get pure JSON
-    json_start = fragment.index("{")
-    json_end = fragment.rindex("}") + 1
-    data = json.loads(fragment[json_start:json_end])
+        data = json.load(f)
     return [pattern for pattern, _value in data["rules"]]
 
 _STATUS_KEYWORDS = _load_status_keywords()
@@ -602,49 +590,42 @@ def warn_status_errors(items: list[dict]) -> None:
 # ---------------------------------------------------------------------------
 
 def load_existing_items(year: int) -> list[dict]:
-    """Read items from data/app_data_{year}.js, or return empty list."""
-    path = f"data/app_data_{year}.js"
+    """Read items from data/app_data_{year}.json, or return empty list."""
+    path = f"data/app_data_{year}.json"
     if not os.path.exists(path):
         return []
     try:
         with open(path, encoding="utf-8") as f:
-            content = f.read()
-        prefix = f"window.ORDER_DATA_{year} = "
-        json_str = content.removeprefix(prefix).removesuffix(";\n")
-        return json.loads(json_str).get("items", [])
+            return json.load(f).get("items", [])
     except Exception as e:
         print(f"Warning: could not read {path} ({e}), starting fresh.")
         return []
 
 
-
 def write_output(items: list[dict], year: int, email: str | None = None) -> None:
     os.makedirs("data", exist_ok=True)
-    path = f"data/app_data_{year}.js"
+    path = f"data/app_data_{year}.json"
     output = {
         "generated_at": datetime.datetime.now().isoformat(),
         "email": email,
         "items": items,
     }
     with open(path, "w", encoding="utf-8") as f:
-        f.write(f"window.ORDER_DATA_{year} = ")
         json.dump(output, f, indent=2, default=str)
-        f.write(";\n")
     print(f"Wrote {len(items)} items to {path}")
 
 
 def write_manifest() -> None:
-    """Scan data/ for app_data_YYYY.js files and write app_data_manifest.js."""
-    files = _glob.glob("data/app_data_[0-9][0-9][0-9][0-9].js")
+    """Scan data/ for app_data_YYYY.json files and write app_data_manifest.json."""
+    files = _glob.glob("data/app_data_[0-9][0-9][0-9][0-9].json")
     years = sorted(
         [int(os.path.basename(f)[9:13]) for f in files],
         reverse=True,  # newest first
     )
     counts = {year: len(load_existing_items(year)) for year in years}
     os.makedirs("data", exist_ok=True)
-    with open("data/app_data_manifest.js", "w", encoding="utf-8") as f:
-        f.write(f"window.ORDER_DATA_MANIFEST = {json.dumps(years)};\n")
-        f.write(f"window.ORDER_DATA_YEAR_COUNTS = {json.dumps(counts)};\n")
+    with open("data/app_data_manifest.json", "w", encoding="utf-8") as f:
+        json.dump({"years": years, "year_counts": counts}, f, indent=2)
     print(f"Wrote manifest: {years} (counts: {counts})")
 
 

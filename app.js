@@ -476,29 +476,35 @@ document.querySelectorAll(".tab").forEach(btn => {
 });
 
 // ---------------------------------------------------------------------------
-// Boot — async, with dynamic script loading
+// Boot — async, with fetch-based JSON loading
 // ---------------------------------------------------------------------------
 
-/** Promise-based dynamic script injector. */
-function loadScript(src) {
-  return new Promise((resolve, reject) => {
-    const s = document.createElement("script");
-    s.src = src;
-    s.onload = resolve;
-    s.onerror = reject;
-    document.head.appendChild(s);
-  });
+/** Fetch a JSON file and return its parsed content. */
+async function loadJson(url) {
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(`Failed to load ${url}: ${resp.status}`);
+  return resp.json();
 }
 
+/** Cache of loaded year data objects, keyed by year number. */
+const yearDataCache = {};
+
 /**
- * Merge items from the given years (already loaded as window globals) into
- * allItems, update loadedYears, and return metadata from the freshest file.
+ * Fetch year JSON files, cache them, and merge their items into allItems.
+ * Returns metadata from the freshest file.
  */
-function mergeYears(years) {
+async function fetchAndMergeYears(years) {
+  // Fetch any years not yet cached
+  const toFetch = years.filter(y => !yearDataCache[y]);
+  const fetched = await Promise.all(toFetch.map(y => loadJson(`data/app_data_${y}.json`)));
+  for (let i = 0; i < toFetch.length; i++) {
+    yearDataCache[toFetch[i]] = fetched[i];
+  }
+
   let email = null;
   for (const year of years) {
     if (loadedYears.has(year)) continue;
-    const yearData = window["ORDER_DATA_" + year];
+    const yearData = yearDataCache[year];
     if (!yearData) continue;
     allItems = allItems.concat(yearData.items || []);
     loadedYears.add(year);
@@ -506,7 +512,7 @@ function mergeYears(years) {
   }
   // Use the current calendar year's generated_at so historical backfills
   // don't change the displayed "Updated" timestamp.
-  const currentYearData = window["ORDER_DATA_" + new Date().getFullYear()];
+  const currentYearData = yearDataCache[new Date().getFullYear()];
   const latestGeneratedAt = currentYearData?.generated_at || null;
   return { latestGeneratedAt, email };
 }
@@ -580,9 +586,7 @@ async function loadAllYears(manifest) {
   }
 
   const remaining = manifest.filter(y => !loadedYears.has(y));
-  await Promise.all(remaining.map(y => loadScript(`data/app_data_${y}.js`)));
-
-  mergeYears(remaining);
+  await fetchAndMergeYears(remaining);
 
   // Re-sort allItems newest-first so display order stays consistent
   allItems.sort((a, b) => (b.order_date || "").localeCompare(a.order_date || ""));
@@ -590,11 +594,11 @@ async function loadAllYears(manifest) {
   // Retrieve email and current-year generatedAt for the final header
   let finalEmail = null;
   for (const year of loadedYears) {
-    const yd = window["ORDER_DATA_" + year];
+    const yd = yearDataCache[year];
     if (!yd) continue;
     if (!finalEmail && yd.email) finalEmail = yd.email;
   }
-  const currentYearData = window["ORDER_DATA_" + new Date().getFullYear()];
+  const currentYearData = yearDataCache[new Date().getFullYear()];
   const finalGenAt = currentYearData?.generated_at || null;
 
   renderMetaBar(manifest, finalGenAt, finalEmail);
@@ -604,33 +608,50 @@ async function loadAllYears(manifest) {
 
 async function init() {
   const container = document.getElementById("item-list");
-  const manifest = window.ORDER_DATA_MANIFEST;
 
-  if (!manifest || manifest.length === 0) {
+  // Load JSON configuration files (status rules + known overrides)
+  try {
+    const [statusRules, knownStatus] = await Promise.all([
+      loadJson("status_rules.json"),
+      loadJson("data/known_status_issues.json").catch(() => ({})),
+    ]);
+    _initOrderLogicData(statusRules, knownStatus);
+  } catch (e) {
+    console.error("Failed to load status rules:", e);
+  }
+
+  // Load manifest
+  let manifestData;
+  try {
+    manifestData = await loadJson("data/app_data_manifest.json");
+  } catch {
+    manifestData = null;
+  }
+
+  const manifest = manifestData?.years || [];
+  const yearCounts = manifestData?.year_counts || {};
+
+  if (manifest.length === 0) {
     container.innerHTML = `
       <div class="error-state">
         <h2>Could not load order data</h2>
         <p>
           Run <code>.venv/bin/python3 fetch_orders.py</code> to generate
-          <code>data/app_data_manifest.js</code> and year data files,
-          then open <code>index.html</code> directly in your browser.
+          <code>data/app_data_manifest.json</code> and year data files,
+          then serve this directory with a local HTTP server.
         </p>
       </div>`;
     return;
   }
 
   // Compute total item count from manifest metadata (if available)
-  const yearCounts = window.ORDER_DATA_YEAR_COUNTS || {};
   totalItemCount = Object.values(yearCounts).reduce((sum, n) => sum + n, 0);
 
   // Determine which years to load now (those covering the last 3 months)
   const yearsToLoad = initialYears(manifest);
 
-  // Dynamically load only the needed year scripts
-  await Promise.all(yearsToLoad.map(y => loadScript(`data/app_data_${y}.js`)));
-
-  // Merge loaded year data into allItems
-  const { latestGeneratedAt, email } = mergeYears(yearsToLoad);
+  // Fetch only the needed year JSON files
+  const { latestGeneratedAt, email } = await fetchAndMergeYears(yearsToLoad);
 
   // Build the meta-bar and (conditionally) the Show Graph button
   renderMetaBar(manifest, latestGeneratedAt, email);
@@ -680,7 +701,7 @@ function logDiagnostics(items) {
   if (unknownSamples.length) {
     console.warn(
       `${unknownSamples.length} item(s) have Unknown status ` +
-      `(check status_rules.js and data/known_status_issues.json):`,
+      `(check status_rules.json and data/known_status_issues.json):`,
       unknownSamples.slice(0, 20)
     );
   }

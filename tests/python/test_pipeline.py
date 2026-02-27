@@ -235,16 +235,12 @@ class TestPipeline:
         write_output([{"item_id": "b"}, {"item_id": "c"}], 2025)
         write_manifest()
 
-        manifest_path = tmp_data_dir / "data" / "app_data_manifest.js"
-        content = manifest_path.read_text()
-        lines = content.strip().split("\n")
-
-        manifest_json = lines[0].split(" = ", 1)[1].rstrip(";")
-        years = json.loads(manifest_json)
-        assert years == [2025, 2024]
+        manifest_path = tmp_data_dir / "data" / "app_data_manifest.json"
+        data = json.loads(manifest_path.read_text())
+        assert data["years"] == [2025, 2024]
 
     def test_output_file_structure(self, tmp_data_dir):
-        """Verify the exact structure of the output JS file."""
+        """Verify the exact structure of the output JSON file."""
         items = [
             {
                 "item_id": "test-id",
@@ -254,16 +250,8 @@ class TestPipeline:
         ]
         write_output(items, 2025, email="user@test.com")
 
-        path = tmp_data_dir / "data" / "app_data_2025.js"
-        content = path.read_text()
-
-        # Must start with window assignment and end with semicolon
-        assert content.startswith("window.ORDER_DATA_2025 = ")
-        assert content.endswith(";\n")
-
-        # Parse the JSON portion
-        json_str = content.removeprefix("window.ORDER_DATA_2025 = ").removesuffix(";\n")
-        data = json.loads(json_str)
+        path = tmp_data_dir / "data" / "app_data_2025.json"
+        data = json.loads(path.read_text())
 
         assert "generated_at" in data
         assert data["email"] == "user@test.com"
