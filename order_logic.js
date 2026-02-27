@@ -419,8 +419,7 @@ function groupItemsByAsin(items) {
     if (spanMs > 0 && totalQuantity > 1) {
       const spanMonths = spanMs / (1000 * 60 * 60 * 24 * 30.44);
       const rawFreq = spanMonths / (totalQuantity - 1);
-      const rounded = Math.max(1, Math.round(rawFreq));
-      frequencyMonths = rounded <= 12 ? rounded : null;
+      frequencyMonths = Math.max(1, Math.round(rawFreq));
     }
 
     result.push({
@@ -441,6 +440,19 @@ function groupItemsByAsin(items) {
   // Sort by most recent order date descending
   result.sort((a, b) => (b.newestOrderDate || "").localeCompare(a.newestOrderDate || ""));
   return result;
+}
+
+/**
+ * Format a frequencyMonths value for display.
+ * <= 18 months: "Every X mo"
+ * > 18 months: "Every X yr" (rounded to nearest year)
+ * null: ""
+ */
+function formatFrequency(months) {
+  if (months === null || months === undefined) return "";
+  if (months <= 18) return `Every ${months} mo`;
+  const years = Math.round(months / 12);
+  return `Every ${years} yr`;
 }
 
 // ---------------------------------------------------------------------------
@@ -475,5 +487,6 @@ if (typeof module !== "undefined" && module.exports) {
     isMailBackEligible,
     initialYears,
     groupItemsByAsin,
+    formatFrequency,
   };
 }

@@ -3,7 +3,7 @@ import { createRequire } from "module";
 const require = createRequire(import.meta.url);
 
 const logic = require("../../order_logic.js");
-const { groupItemsByAsin } = logic;
+const { groupItemsByAsin, formatFrequency } = logic;
 
 function makeItem(overrides) {
   return {
@@ -124,14 +124,24 @@ describe("groupItemsByAsin", () => {
     expect(groups).toHaveLength(0);
   });
 
-  it("returns null frequency when calculated value exceeds 12 months", () => {
-    // 1 on Jan 2023, 1 on Jan 2025 => 2 total, 24 months => 24/1 = 24 mo > 12
+  it("returns frequency even when value exceeds 12 months", () => {
+    // 1 on Jan 2023, 1 on Jan 2025 => 2 total, 24 months => 24/1 = 24 mo
     const items = [
       makeItem({ asin: "B001", order_id: "A1", item_id: "A1__B001", order_date: "2023-01-01", quantity: 1 }),
       makeItem({ asin: "B001", order_id: "A2", item_id: "A2__B001", order_date: "2025-01-01", quantity: 1 }),
     ];
     const groups = groupItemsByAsin(items);
-    expect(groups[0].frequencyMonths).toBeNull();
+    expect(groups[0].frequencyMonths).toBe(24);
+  });
+
+  it("returns large frequency values for very infrequent purchases", () => {
+    // 1 on Jan 2020, 1 on Jan 2025 => 2 total, ~60 months => 60/1 = 60 mo
+    const items = [
+      makeItem({ asin: "B001", order_id: "A1", item_id: "A1__B001", order_date: "2020-01-01", quantity: 1 }),
+      makeItem({ asin: "B001", order_id: "A2", item_id: "A2__B001", order_date: "2025-01-01", quantity: 1 }),
+    ];
+    const groups = groupItemsByAsin(items);
+    expect(groups[0].frequencyMonths).toBe(60);
   });
 
   it("rounds frequency to nearest whole month", () => {
@@ -209,5 +219,37 @@ describe("groupItemsByAsin", () => {
     const groups = groupItemsByAsin(items);
     expect(groups[0].oldestOrderDate).toBe("2024-03-15");
     expect(groups[0].newestOrderDate).toBe("2025-06-01");
+  });
+});
+
+describe("formatFrequency", () => {
+  it("returns empty string for null", () => {
+    expect(formatFrequency(null)).toBe("");
+  });
+
+  it("formats months <= 18 as 'Every X mo'", () => {
+    expect(formatFrequency(1)).toBe("Every 1 mo");
+    expect(formatFrequency(6)).toBe("Every 6 mo");
+    expect(formatFrequency(12)).toBe("Every 12 mo");
+    expect(formatFrequency(18)).toBe("Every 18 mo");
+  });
+
+  it("rounds to nearest year above 18 months", () => {
+    expect(formatFrequency(19)).toBe("Every 2 yr");
+    expect(formatFrequency(24)).toBe("Every 2 yr");
+    expect(formatFrequency(30)).toBe("Every 3 yr");
+    expect(formatFrequency(36)).toBe("Every 3 yr");
+  });
+
+  it("rounds 21 months to 2 yr", () => {
+    expect(formatFrequency(21)).toBe("Every 2 yr");
+  });
+
+  it("rounds 42 months to 4 yr", () => {
+    expect(formatFrequency(42)).toBe("Every 4 yr");
+  });
+
+  it("handles edge case of 59 months (rounds to 5 yr)", () => {
+    expect(formatFrequency(59)).toBe("Every 5 yr");
   });
 });

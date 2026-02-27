@@ -430,8 +430,9 @@ function renderQuantityCard(group) {
     ? `<span class="price">${formatPrice(group.unit_price)}</span>`
     : "";
 
-  const freqHtml = group.frequencyMonths !== null
-    ? `<span class="badge badge-frequency">Every ${group.frequencyMonths} mo</span>`
+  const freqLabel = formatFrequency(group.frequencyMonths);
+  const freqHtml = freqLabel
+    ? `<span class="badge badge-frequency">${freqLabel}</span>`
     : "";
 
   const snsHtml = group.subscribe_and_save
