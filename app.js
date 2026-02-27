@@ -680,7 +680,7 @@ function logDiagnostics(items) {
   if (unknownSamples.length) {
     console.warn(
       `${unknownSamples.length} item(s) have Unknown status ` +
-      `(check status_rules.js and data/known_status_issues.json):`,
+      `(check status_rules.js and known_status_issues.js):`,
       unknownSamples.slice(0, 20)
     );
   }

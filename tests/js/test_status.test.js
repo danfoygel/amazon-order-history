@@ -281,7 +281,7 @@ describe("effectiveStatus", () => {
     expect(effectiveStatus(item)).toBe("Return Started");
   });
 
-  it("applies known-status override for items in known_status_issues.json", () => {
+  it("applies known-status override for items in known_status_issues.js", () => {
     // "Cannot display current status" is unrecognized → Unknown, but the
     // override file maps this item_id to "Delivered".
     const item = {
