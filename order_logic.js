@@ -146,10 +146,12 @@ function sortItems(items, sort) {
       return arr.sort((a, b) => (a.unit_price ?? 0) - (b.unit_price ?? 0));
     case "return_window_asc":
       return arr.sort((a, b) => {
-        if (!a.return_window_end && !b.return_window_end) return 0;
-        if (!a.return_window_end) return 1;
-        if (!b.return_window_end) return -1;
-        return a.return_window_end.localeCompare(b.return_window_end);
+        const aEnd = a.return_window_end || estimateReturnWindowEnd(a.order_date);
+        const bEnd = b.return_window_end || estimateReturnWindowEnd(b.order_date);
+        if (!aEnd && !bEnd) return 0;
+        if (!aEnd) return 1;
+        if (!bEnd) return -1;
+        return aEnd.localeCompare(bEnd);
       });
     case "expected_delivery_asc":
       return arr.sort((a, b) => {
