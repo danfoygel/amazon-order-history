@@ -510,3 +510,176 @@ test.describe('Empty state', () => {
     await expect(page.locator('.empty-state')).toBeVisible();
   });
 });
+
+// ===========================================================================
+// Keyboard navigation
+// ===========================================================================
+
+test.describe('Keyboard navigation', () => {
+
+  test('"/" focuses the search bar', async ({ page }) => {
+    await loadApp(page);
+    // Click body to ensure no element is focused.
+    await page.locator('body').click();
+    await page.keyboard.press('/');
+    const focused = await page.evaluate(() => document.activeElement.id);
+    expect(focused).toBe('search-input');
+  });
+
+  test('Ctrl+K focuses the search bar', async ({ page }) => {
+    await loadApp(page);
+    await page.locator('body').click();
+    await page.keyboard.press('Control+k');
+    const focused = await page.evaluate(() => document.activeElement.id);
+    expect(focused).toBe('search-input');
+  });
+
+  test('number keys 1-9 switch tabs', async ({ page }) => {
+    await loadApp(page);
+    await page.locator('body').click();
+
+    // Press "1" — should activate the first tab (Combined).
+    await page.keyboard.press('1');
+    await expect(page.locator('.tab[data-filter="combined"]')).toHaveClass(/active/);
+
+    // Press "4" — should activate the 4th visible tab.
+    await page.keyboard.press('4');
+    const tabs = page.locator('.tab:visible');
+    const fourthTab = tabs.nth(3);
+    await expect(fourthTab).toHaveClass(/active/);
+  });
+
+  test('arrow keys move focus between item cards', async ({ page }) => {
+    await loadApp(page);
+    await clickTab(page, 'all');
+    await page.locator('body').click();
+
+    // Press Right arrow to focus the first card.
+    await page.keyboard.press('ArrowRight');
+    await expect(page.locator('.item-card').first()).toHaveClass(/card-focused/);
+
+    // Press Right arrow again to move to the second card.
+    await page.keyboard.press('ArrowRight');
+    await expect(page.locator('.item-card').nth(1)).toHaveClass(/card-focused/);
+    // First card should no longer be focused.
+    await expect(page.locator('.item-card').first()).not.toHaveClass(/card-focused/);
+
+    // Press Left arrow to go back to the first card.
+    await page.keyboard.press('ArrowLeft');
+    await expect(page.locator('.item-card').first()).toHaveClass(/card-focused/);
+  });
+
+  test('up/down arrows jump by row (grid columns)', async ({ page }) => {
+    await loadApp(page);
+    await clickTab(page, 'all');
+    await page.locator('body').click();
+
+    // Focus the first card.
+    await page.keyboard.press('ArrowRight');
+    await expect(page.locator('.item-card').first()).toHaveClass(/card-focused/);
+
+    // Compute how many columns the grid has by comparing card positions.
+    const cols = await page.evaluate(() => {
+      const cards = document.querySelectorAll('.item-card');
+      if (cards.length < 2) return 1;
+      const firstTop = cards[0].getBoundingClientRect().top;
+      for (let i = 1; i < cards.length; i++) {
+        if (cards[i].getBoundingClientRect().top !== firstTop) return i;
+      }
+      return cards.length;
+    });
+
+    // Press Down arrow — should jump forward by `cols` cards.
+    await page.keyboard.press('ArrowDown');
+    await expect(page.locator('.item-card').nth(cols)).toHaveClass(/card-focused/);
+
+    // Press Up arrow — should jump back to the first card.
+    await page.keyboard.press('ArrowUp');
+    await expect(page.locator('.item-card').first()).toHaveClass(/card-focused/);
+  });
+
+  test('up/down arrows maintain column across section boundaries in combined view', async ({ page }) => {
+    await loadApp(page);
+    // Combined view is the default — sections have independent grids.
+    // Navigate to the 2nd card in the last row of Mail Back (col 2).
+    await page.locator('body').click();
+
+    // Focus the 2nd card (column 2 of first row).
+    await page.keyboard.press('ArrowRight');
+    await page.keyboard.press('ArrowRight');
+    const startCard = page.locator('.item-card.card-focused');
+    await expect(startCard).toBeVisible();
+
+    const startCenterX = await startCard.evaluate(el => {
+      const r = el.getBoundingClientRect();
+      return r.left + r.width / 2;
+    });
+
+    // Press ArrowDown repeatedly until we cross the section boundary.
+    // Each press should maintain the same horizontal column.
+    for (let i = 0; i < 5; i++) {
+      await page.keyboard.press('ArrowDown');
+      const focusedCard = page.locator('.item-card.card-focused');
+      const centerX = await focusedCard.evaluate(el => {
+        const r = el.getBoundingClientRect();
+        return r.left + r.width / 2;
+      });
+      // Allow small tolerance (5px) for rounding.
+      expect(Math.abs(centerX - startCenterX)).toBeLessThan(5);
+    }
+  });
+
+  test('Enter on a focused card opens the Amazon order page', async ({ page }) => {
+    await loadApp(page);
+    await clickTab(page, 'all');
+    await page.locator('body').click();
+
+    // Focus the first card.
+    await page.keyboard.press('ArrowRight');
+    await expect(page.locator('.item-card.card-focused')).toBeVisible();
+
+    // Listen for popup (new tab) on Enter.
+    const popupPromise = page.waitForEvent('popup');
+    await page.keyboard.press('Enter');
+    const popup = await popupPromise;
+    expect(popup.url()).toContain('amazon.com');
+  });
+
+  test('Escape closes the graph modal', async ({ page }) => {
+    await loadApp(page);
+    // Load all data so graph buttons appear.
+    await page.locator('#load-all-link').click();
+    await page.waitForFunction(() => !document.getElementById('load-all-link'));
+
+    // Open the years graph modal.
+    await page.locator('.graph-btn', { hasText: 'Years' }).click();
+    await expect(page.locator('#graph-modal')).toBeVisible();
+
+    // Press Escape to close it.
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#graph-modal')).not.toBeVisible();
+  });
+
+  test('Escape clears the search bar', async ({ page }) => {
+    await loadApp(page);
+    await clickTab(page, 'all');
+    await page.fill('#search-input', 'Pickle');
+    expect(await cardCount(page)).toBe(1);
+
+    // Press Escape to clear search.
+    await page.keyboard.press('Escape');
+    const searchVal = await page.locator('#search-input').inputValue();
+    expect(searchVal).toBe('');
+    expect(await cardCount(page)).toBe(18);
+  });
+
+  test('keyboard shortcuts are suppressed when typing in the search bar', async ({ page }) => {
+    await loadApp(page);
+    await page.locator('#search-input').focus();
+    await page.keyboard.type('jack');
+
+    // The "j" and "k" should have been typed, not intercepted as shortcuts.
+    const searchVal = await page.locator('#search-input').inputValue();
+    expect(searchVal).toBe('jack');
+  });
+});
