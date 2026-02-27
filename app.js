@@ -452,13 +452,12 @@ function renderQuantityCard(group) {
       <div class="card-top-right">
         <div class="card-title">${titleHtml}</div>
         <div class="card-badges">
-          <span class="badge badge-quantity">Qty: ${group.totalQuantity}</span>
           ${freqHtml}
           ${snsHtml}
         </div>
         <div class="card-meta">
           ${priceHtml}
-          <span>${group.orderCount} orders · ${formatDate(group.oldestOrderDate)} – ${formatDate(group.newestOrderDate)}</span>
+          <span>${group.orderCount} orders${group.totalQuantity !== group.orderCount ? ` (${group.totalQuantity} items)` : ""} · ${formatDate(group.oldestOrderDate)} – ${formatDate(group.newestOrderDate)}</span>
         </div>
       </div>
     </div>

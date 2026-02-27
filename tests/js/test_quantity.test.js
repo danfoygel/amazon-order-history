@@ -115,13 +115,13 @@ describe("groupItemsByAsin", () => {
     expect(groups[0].frequencyMonths).toBe(2);
   });
 
-  it("returns null frequency when all orders are on the same date", () => {
+  it("filters out items where all orders are on the same date", () => {
     const items = [
       makeItem({ asin: "B001", order_id: "AAA", item_id: "AAA__B001", order_date: "2025-01-01", quantity: 2 }),
       makeItem({ asin: "B001", order_id: "BBB", item_id: "BBB__B001", order_date: "2025-01-01", quantity: 3 }),
     ];
     const groups = groupItemsByAsin(items);
-    expect(groups[0].frequencyMonths).toBeNull();
+    expect(groups).toHaveLength(0);
   });
 
   it("returns null frequency when calculated value exceeds 12 months", () => {

@@ -720,11 +720,14 @@ test.describe('Quantity view', () => {
     expect(firstAsin).toBe('B07JJP4XTL');
   });
 
-  test('Quantity cards show total quantity badge', async ({ page }) => {
+  test('Quantity cards show item count in meta when qty differs from order count', async ({ page }) => {
     await loadAllAndClickQuantity(page);
-    const qtyBadges = page.locator('.badge-quantity');
-    const count = await qtyBadges.count();
-    expect(count).toBe(3); // One per card
+    // B07NXG4NV9: 2 orders, 3 items => should show "(3 items)"
+    // B07JJP4XTL: 2 orders, 3 items => should show "(3 items)"
+    // B00004YMGF: 2 orders, 2 items => should NOT show "items"
+    const metas = await page.locator('.card-meta').allTextContents();
+    const withItemCount = metas.filter(m => m.includes('items'));
+    expect(withItemCount.length).toBe(2);
   });
 
   test('Quantity cards show frequency badge when applicable', async ({ page }) => {

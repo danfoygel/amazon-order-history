@@ -389,13 +389,14 @@ function groupItemsByAsin(items) {
 
   const result = [];
   for (const [asin, orders] of byAsin) {
-    // Only include items with multiple distinct orders
-    if (orders.length < 2) continue;
-
-    const totalQuantity = orders.reduce((sum, o) => sum + (o.quantity || 1), 0);
-
     // Sort orders by date ascending for frequency calculation
     orders.sort((a, b) => (a.order_date || "").localeCompare(b.order_date || ""));
+
+    // Require orders on multiple distinct dates
+    const distinctDates = new Set(orders.map(o => o.order_date));
+    if (distinctDates.size < 2) continue;
+
+    const totalQuantity = orders.reduce((sum, o) => sum + (o.quantity || 1), 0);
     const mostRecent = orders[orders.length - 1];
     const oldest = orders[0];
 
