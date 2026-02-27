@@ -251,10 +251,30 @@ describe("effectiveStatus", () => {
     expect(effectiveStatus(item)).toBe("Delivered");
   });
 
-  it("does not demote Return Started without return_window_end", () => {
+  it("demotes Return Started without return_window_end using estimated date", () => {
     const item = {
       delivery_status: "Return started",
-      order_date: "2025-03-01",
+      order_date: "2025-03-01",  // estimated window: 2025-04-03, >30 days past
+      tracking_url: null,
+      return_window_end: null,
+    };
+    expect(effectiveStatus(item)).toBe("Delivered");
+  });
+
+  it("does not demote Return Started with recent order_date and no return_window_end", () => {
+    const item = {
+      delivery_status: "Return started",
+      order_date: "2025-06-01",  // estimated window: 2025-07-04, still future
+      tracking_url: null,
+      return_window_end: null,
+    };
+    expect(effectiveStatus(item)).toBe("Return Started");
+  });
+
+  it("does not demote Return Started without return_window_end or order_date", () => {
+    const item = {
+      delivery_status: "Return started",
+      order_date: null,
       tracking_url: null,
       return_window_end: null,
     };

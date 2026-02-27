@@ -179,51 +179,7 @@ function orderUrl(item) {
   return `https://www.amazon.com/gp/your-account/order-details?orderID=${encodeURIComponent(item.order_id)}`;
 }
 
-// effectiveStatus() is in order_logic.js
-
-// ---------------------------------------------------------------------------
-// Return window badge (Delivered and Return Started items)
-// ---------------------------------------------------------------------------
-function returnWindowHtml(item) {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const status = effectiveStatus(item);
-
-  if (status === "Delivered") {
-    if (!item.return_window_end) return "";
-    const end = new Date(item.return_window_end + "T00:00:00");
-    const daysLeft = Math.ceil((end - today) / (1000 * 60 * 60 * 24));
-    const dateStr = formatDateNearby(item.return_window_end);
-    const daysHint = (daysLeft >= 0 && daysLeft <= 7 && !["today", "tomorrow", "yesterday"].includes(dateStr))
-      ? ` (${daysLeft}d left)` : "";
-    if (daysLeft < 0) {
-      return `<span class="badge return-badge-closed">Return window closed</span>`;
-    }
-    if (daysLeft <= 7) {
-      return `<span class="badge return-badge-warn">⚠ Return by ${dateStr}${daysHint}</span>`;
-    }
-    return `<span class="badge return-badge-ok">Return by ${dateStr}</span>`;
-  }
-
-  if (status === "Return Started" || status === "Replacement Ordered") {
-    if (!item.return_window_end) return `<span class="badge return-badge-warn">⚠ Mail back — deadline unknown</span>`;
-    const end = new Date(item.return_window_end + "T00:00:00");
-    const daysLeft = Math.ceil((end - today) / (1000 * 60 * 60 * 24));
-    const dateStr = formatDateNearby(item.return_window_end);
-    const daysHint = (daysLeft >= 0 && daysLeft <= 7 && !["today", "tomorrow", "yesterday"].includes(dateStr))
-      ? ` (${daysLeft}d left)` : "";
-    if (daysLeft < 0) {
-      return `<span class="badge return-badge-overdue">Mail back by ${dateStr}</span>`;
-    }
-    if (daysLeft <= 7) {
-      return `<span class="badge return-badge-warn">⚠ Mail back by ${dateStr}${daysHint}</span>`;
-    }
-    return `<span class="badge return-badge-ok">Mail back by ${dateStr}</span>`;
-  }
-
-  return "";
-}
+// effectiveStatus(), returnWindowHtml(), estimateReturnWindowEnd() are in order_logic.js
 
 // ---------------------------------------------------------------------------
 // Return policy icon

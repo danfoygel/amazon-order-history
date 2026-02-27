@@ -69,10 +69,22 @@ describe("sortItems", () => {
     expect(sorted.map(i => i.title)).toEqual(["Item C", "Item A", "Item D", "Item B"]);
   });
 
-  it("sorts by return_window_asc — earliest deadline first, nulls last", () => {
+  it("sorts by return_window_asc — earliest deadline first, estimates from order_date", () => {
     const items = makeItems();
     const sorted = sortItems(items, "return_window_asc");
+    // Item C has null return_window_end but order_date 2025-06-01 → estimated 2025-07-04
     expect(sorted.map(i => i.title)).toEqual(["Item B", "Item A", "Item D", "Item C"]);
+  });
+
+  it("sorts by return_window_asc — null order_date goes last", () => {
+    const items = [
+      { title: "Has date", return_window_end: "2025-05-01", order_date: "2025-03-01" },
+      { title: "No info", return_window_end: null, order_date: null },
+      { title: "Estimated", return_window_end: null, order_date: "2025-04-01" },
+    ];
+    const sorted = sortItems(items, "return_window_asc");
+    // Has date (May 1), Estimated (Apr 1 + 33 = May 4), No info (null → last)
+    expect(sorted.map(i => i.title)).toEqual(["Has date", "Estimated", "No info"]);
   });
 
   it("sorts by expected_delivery_asc — earliest delivery first (with frozen time)", () => {

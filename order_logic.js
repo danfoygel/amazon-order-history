@@ -146,10 +146,12 @@ function sortItems(items, sort) {
       return arr.sort((a, b) => (a.unit_price ?? 0) - (b.unit_price ?? 0));
     case "return_window_asc":
       return arr.sort((a, b) => {
-        if (!a.return_window_end && !b.return_window_end) return 0;
-        if (!a.return_window_end) return 1;
-        if (!b.return_window_end) return -1;
-        return a.return_window_end.localeCompare(b.return_window_end);
+        const aEnd = a.return_window_end || estimateReturnWindowEnd(a.order_date);
+        const bEnd = b.return_window_end || estimateReturnWindowEnd(b.order_date);
+        if (!aEnd && !bEnd) return 0;
+        if (!aEnd) return 1;
+        if (!bEnd) return -1;
+        return aEnd.localeCompare(bEnd);
       });
     case "expected_delivery_asc":
       return arr.sort((a, b) => {
@@ -231,14 +233,31 @@ function effectiveStatus(item) {
   if (status === "Unknown" && item.item_id && KNOWN_STATUS_OVERRIDES[item.item_id]) {
     status = KNOWN_STATUS_OVERRIDES[item.item_id];
   }
-  if ((status === "Return Started" || status === "Replacement Ordered") && item.return_window_end) {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const end = new Date(item.return_window_end + "T00:00:00");
-    const daysOverdue = Math.ceil((today - end) / (1000 * 60 * 60 * 24));
-    if (daysOverdue > 30) return "Delivered";
+  if (status === "Return Started" || status === "Replacement Ordered") {
+    const windowEnd = item.return_window_end || estimateReturnWindowEnd(item.order_date);
+    if (windowEnd) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const end = new Date(windowEnd + "T00:00:00");
+      const daysOverdue = Math.ceil((today - end) / (1000 * 60 * 60 * 24));
+      if (daysOverdue > 30) return "Delivered";
+    }
   }
   return status;
+}
+
+// ---------------------------------------------------------------------------
+// Estimate return_window_end from order_date when the actual date is unknown.
+// Amazon's standard return window is 30 days from delivery.  Observed data
+// shows return_window_end ≈ order_date + 33 days (median across 39 items).
+// ---------------------------------------------------------------------------
+const ESTIMATED_RETURN_WINDOW_DAYS = 33;
+
+function estimateReturnWindowEnd(orderDate) {
+  if (!orderDate) return null;
+  const d = new Date(orderDate + "T00:00:00");
+  d.setDate(d.getDate() + ESTIMATED_RETURN_WINDOW_DAYS);
+  return toIso(d);
 }
 
 // ---------------------------------------------------------------------------
@@ -267,19 +286,26 @@ function returnWindowHtml(item) {
   }
 
   if (status === "Return Started" || status === "Replacement Ordered") {
-    if (!item.return_window_end) return `<span class="badge return-badge-warn">⚠ Mail back — deadline unknown</span>`;
-    const end = new Date(item.return_window_end + "T00:00:00");
+    let windowEnd = item.return_window_end;
+    let estimated = false;
+    if (!windowEnd) {
+      windowEnd = estimateReturnWindowEnd(item.order_date);
+      estimated = true;
+    }
+    if (!windowEnd) return `<span class="badge return-badge-warn">⚠ Mail back — deadline unknown</span>`;
+    const end = new Date(windowEnd + "T00:00:00");
     const daysLeft = Math.ceil((end - today) / (1000 * 60 * 60 * 24));
-    const dateStr = formatDateNearby(item.return_window_end);
+    const dateStr = formatDateNearby(windowEnd);
+    const approx = estimated ? "~" : "";
     const daysHint = (daysLeft >= 0 && daysLeft <= 7 && !["today", "tomorrow", "yesterday"].includes(dateStr))
       ? ` (${daysLeft}d left)` : "";
     if (daysLeft < 0) {
-      return `<span class="badge return-badge-overdue">Mail back by ${dateStr}</span>`;
+      return `<span class="badge return-badge-overdue">Mail back by ${approx}${dateStr}</span>`;
     }
     if (daysLeft <= 7) {
-      return `<span class="badge return-badge-warn">⚠ Mail back by ${dateStr}${daysHint}</span>`;
+      return `<span class="badge return-badge-warn">⚠ Mail back by ${approx}${dateStr}${daysHint}</span>`;
     }
-    return `<span class="badge return-badge-ok">Mail back by ${dateStr}</span>`;
+    return `<span class="badge return-badge-ok">Mail back by ${approx}${dateStr}</span>`;
   }
 
   return "";
@@ -359,6 +385,8 @@ if (typeof module !== "undefined" && module.exports) {
     escHtml,
     orderUrl,
     effectiveStatus,
+    ESTIMATED_RETURN_WINDOW_DAYS,
+    estimateReturnWindowEnd,
     returnWindowHtml,
     returnPolicyIcon,
     isDecideEligible,
