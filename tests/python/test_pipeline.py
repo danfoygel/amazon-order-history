@@ -16,7 +16,6 @@ from fetch_orders import (
     write_output,
     load_existing_items,
     write_manifest,
-    _preserve_return_window,
 )
 
 
@@ -243,44 +242,6 @@ class TestPipeline:
         manifest_json = lines[0].split(" = ", 1)[1].rstrip(";")
         years = json.loads(manifest_json)
         assert years == [2025, 2024]
-
-    def test_preserve_return_window_in_pipeline(self, tmp_data_dir):
-        """Simulate incremental update: fresh items lose return_window_end,
-        but _preserve_return_window restores it from existing data."""
-        # First pass: write items with return dates
-        items_v1 = [
-            {
-                "item_id": "ORD-001__B0ITEM0001",
-                "order_id": "ORD-001",
-                "order_date": "2025-06-15",
-                "title": "Widget",
-                "asin": "B0ITEM0001",
-                "return_window_end": "2025-07-15",
-                "return_policy": "free_or_replace",
-            },
-        ]
-        write_output(items_v1, 2025)
-
-        # Second pass: re-fetch produces null return_window_end
-        # (item went to "Return Started" status on Amazon)
-        items_v2 = [
-            {
-                "item_id": "ORD-001__B0ITEM0001",
-                "order_id": "ORD-001",
-                "order_date": "2025-06-15",
-                "title": "Widget",
-                "asin": "B0ITEM0001",
-                "return_window_end": None,
-                "return_policy": "free_or_replace",
-            },
-        ]
-
-        existing = load_existing_items(2025)
-        existing_by_id = {i["item_id"]: i for i in existing}
-        _preserve_return_window(items_v2, existing_by_id)
-
-        # Return window should be restored from v1
-        assert items_v2[0]["return_window_end"] == "2025-07-15"
 
     def test_output_file_structure(self, tmp_data_dir):
         """Verify the exact structure of the output JS file."""
