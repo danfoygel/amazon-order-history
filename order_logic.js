@@ -369,6 +369,93 @@ function initialYears(manifest) {
 }
 
 // ---------------------------------------------------------------------------
+// Quantity Insights — group items by ASIN for the "Quantity" view
+// ---------------------------------------------------------------------------
+const QUANTITY_STATUSES = new Set(["Delivered", "Ordered", "Shipped"]);
+
+function groupItemsByAsin(items) {
+  const byAsin = new Map();
+
+  for (const item of items) {
+    const status = effectiveStatus(item);
+    if (!QUANTITY_STATUSES.has(status)) continue;
+    if (!item.asin) continue;
+
+    if (!byAsin.has(item.asin)) {
+      byAsin.set(item.asin, []);
+    }
+    byAsin.get(item.asin).push(item);
+  }
+
+  const result = [];
+  for (const [asin, orders] of byAsin) {
+    // Sort orders by date ascending for frequency calculation
+    orders.sort((a, b) => (a.order_date || "").localeCompare(b.order_date || ""));
+
+    // Require orders on multiple distinct dates
+    const distinctDates = new Set(orders.map(o => o.order_date));
+    if (distinctDates.size < 2) continue;
+
+    const totalQuantity = orders.reduce((sum, o) => sum + (o.quantity || 1), 0);
+    const mostRecent = orders[orders.length - 1];
+    const oldest = orders[0];
+
+    // Find the best unit_price — prefer most recent non-null, else any non-null
+    let unitPrice = mostRecent.unit_price;
+    if (unitPrice === null || unitPrice === undefined) {
+      for (let i = orders.length - 2; i >= 0; i--) {
+        if (orders[i].unit_price !== null && orders[i].unit_price !== undefined) {
+          unitPrice = orders[i].unit_price;
+          break;
+        }
+      }
+    }
+
+    // Frequency: consumption rate = span / (totalQuantity - 1)
+    let frequencyMonths = null;
+    const firstDate = new Date(oldest.order_date + "T00:00:00");
+    const lastDate = new Date(mostRecent.order_date + "T00:00:00");
+    const spanMs = lastDate - firstDate;
+    if (spanMs > 0 && totalQuantity > 1) {
+      const spanMonths = spanMs / (1000 * 60 * 60 * 24 * 30.44);
+      const rawFreq = spanMonths / (totalQuantity - 1);
+      frequencyMonths = Math.max(1, Math.round(rawFreq));
+    }
+
+    result.push({
+      asin,
+      title: mostRecent.title,
+      image_link: mostRecent.image_link,
+      item_link: mostRecent.item_link,
+      unit_price: unitPrice,
+      totalQuantity,
+      orderCount: orders.length,
+      frequencyMonths,
+      subscribe_and_save: mostRecent.subscribe_and_save || false,
+      oldestOrderDate: oldest.order_date,
+      newestOrderDate: mostRecent.order_date,
+    });
+  }
+
+  // Sort by most recent order date descending
+  result.sort((a, b) => (b.newestOrderDate || "").localeCompare(a.newestOrderDate || ""));
+  return result;
+}
+
+/**
+ * Format a frequencyMonths value for display.
+ * <= 18 months: "Every X mo"
+ * > 18 months: "Every X yr" (rounded to nearest year)
+ * null: ""
+ */
+function formatFrequency(months) {
+  if (months === null || months === undefined) return "";
+  if (months <= 18) return `Every ${months} mo`;
+  const years = Math.round(months / 12);
+  return `Every ${years} yr`;
+}
+
+// ---------------------------------------------------------------------------
 // Node.js exports (conditional — only active in Node, no-op in browser)
 // ---------------------------------------------------------------------------
 if (typeof module !== "undefined" && module.exports) {
@@ -399,5 +486,7 @@ if (typeof module !== "undefined" && module.exports) {
     isDecideEligible,
     isMailBackEligible,
     initialYears,
+    groupItemsByAsin,
+    formatFrequency,
   };
 }

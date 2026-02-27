@@ -56,20 +56,15 @@ I want to also store my data files in git - but obviously in a private repo that
 
 ---
 
-## Item 11: Quantity Insights
+## Item 11: Quantity Insights ✅ (merged PR #60)
 
-Add a new special view, with a button to the right of "Decide", that is "Quantity".  When that's the one selected, show items that I've ordered multiple times.  Think of this as a s&s optimizer.
+Added a "Quantity" tab showing items ordered on multiple dates, acting as an S&S optimizer. Groups items by ASIN across all years, shows consumption-rate frequency ("Every X mo" or "Every X yr" for >18 mo), S&S icon from latest order, order count with date range, and most recent price. Pure logic in `groupItemsByAsin()` and `formatFrequency()` in `order_logic.js`. 24 unit tests, 11 E2E tests.
 
-- Should only apply to items that were delivered and not returned, figure out which subset of statuses that shoud include - put that in the plan and I'll confirm.
-- Show the total quantity that I've ever ordered on the item card, and sort the view by quantity desc.
-- Make sure you consider the item quantity in the order.
-- Deduplicate orders - if I've ordered the same item in multiple orders at different times, show that as a single item card with a combined quantity.  
-- In this view, only show items where the combined quantity is >= 2.
-- Remove all of the date information - ordered, delivered, return by, etc. - since it may not be applicable when there are multiple orders.
-- Remove the s&s indication (and checkbox) and the return status indication, since those again might be order-specific.
-- Calculate the average frequency that I'm ordering these items - for instance, if I order it on Jan 1, Jun 1, and Sep 1, that would be "every 4 months".  Determine the right formula for this - put that in the plan and I'll confirm.
-- If the frequency is <= 12 months, show that on the item card.
-- For each item, see if you're able to determine whether it's s&s eligible - let me know in the plan whether that's possible.  If yes, show the s&s icon on those items - this will mean something different than the other views, here's it showing that s&s is possible rather than that s&s was used.
+---
+
+## Item 11b: S&S eligibility enrichment
+
+Add S&S eligibility detection to `fetch_orders.py`'s ASIN cache (similar to how return policy is fetched from product pages). Scrape each product's Amazon page to determine if it offers Subscribe & Save, and store the result in `asin_cache.json`. The Quantity view can then show the S&S icon for truly eligible items, not just ones previously ordered via S&S.
 
 ---
 
