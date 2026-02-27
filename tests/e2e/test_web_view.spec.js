@@ -18,7 +18,7 @@ test.beforeEach(async ({ page }) => {
       const body = fs.readFileSync(filePath, 'utf-8');
       await route.fulfill({
         status: 200,
-        contentType: 'application/javascript',
+        contentType: 'application/json',
         body,
       });
     } else {

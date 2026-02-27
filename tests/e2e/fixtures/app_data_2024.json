@@ -1,4 +1,4 @@
-window.ORDER_DATA_2024 = {
+{
   "generated_at": "2025-06-01T12:00:00.000000+00:00",
   "email": "test@example.com",
   "items": [
@@ -47,4 +47,4 @@ window.ORDER_DATA_2024 = {
       "subscribe_and_save": false
     }
   ]
-};
+}

@@ -1,2 +1,0 @@
-window.ORDER_DATA_MANIFEST = [2025, 2024];
-window.ORDER_DATA_YEAR_COUNTS = {"2025": 18, "2024": 2};
