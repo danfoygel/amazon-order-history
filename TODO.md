@@ -56,63 +56,9 @@ I want to also store my data files in git - but obviously in a private repo that
 
 ---
 
-## Item 11: Quantity Insights
+## Item 11: Quantity Insights ✅ (merged PR #60)
 
-Add a new special view, with a button to the right of "Decide", that is "Quantity".  When that's the one selected, show items that I've ordered multiple times.  Think of this as a s&s optimizer.
-
-- Should only apply to items that were delivered and not returned, figure out which subset of statuses that shoud include - put that in the plan and I'll confirm.
-- Show the total quantity that I've ever ordered on the item card, and sort the view by quantity desc.
-- Make sure you consider the item quantity in the order.
-- Deduplicate orders - if I've ordered the same item in multiple orders at different times, show that as a single item card with a combined quantity.  
-- In this view, only show items where the combined quantity is >= 2.
-- Remove all of the date information - ordered, delivered, return by, etc. - since it may not be applicable when there are multiple orders.
-- Remove the s&s indication (and checkbox) and the return status indication, since those again might be order-specific.
-- Calculate the average frequency that I'm ordering these items - for instance, if I order it on Jan 1, Jun 1, and Sep 1, that would be "every 4 months".  Determine the right formula for this - put that in the plan and I'll confirm.
-- If the frequency is <= 12 months, show that on the item card.
-- For each item, see if you're able to determine whether it's s&s eligible - let me know in the plan whether that's possible.  If yes, show the s&s icon on those items - this will mean something different than the other views, here's it showing that s&s is possible rather than that s&s was used.
-
-### Implementation Plan
-
-**Statuses to include:** Delivered, Ordered, and Shipped (excludes return statuses, Replacement, Cancelled, Unknown).
-
-**Deduplication & aggregation:**
-- Group all qualifying items by `asin` (the unique product identifier)
-- For each ASIN group, sum `quantity` across all orders → `totalQuantity`
-- Only keep groups where `totalQuantity >= 2`
-- Use the most recent order's `title`, `image_link`, and `item_link` for the card display
-- Collect all order dates + quantities for frequency calculation
-
-**Frequency formula (consumption-rate based):**
-- Collect all orders for the ASIN with their dates and quantities, sorted chronologically
-- Time span = last order date - first order date
-- If span = 0 (all orders on same date): no frequency shown (bulk buy)
-- Consumption rate = time span / (totalQuantity - 1), converted to months
-- The `-1` accounts for the last unit not yet consumed
-- Round to nearest whole month (minimum 1); show as "Every X mo" on the card
-- Only display if frequency <= 12 months
-- Example: 1 on Jan 1, 3 on Jun 1, 1 on Sep 1 → 5 total, 8-month span → 8/4 = 2 mo → "Every 2 mo"
-
-**S&S eligibility:** Show S&S icon if any past order of that item used S&S (known-eligible from history). See Item 11b for future improvement.
-
-**UI changes:**
-- Add "Quantity" tab button in `index.html` after "Decide", styled as `tab-action`
-- Tab count shows number of deduplicated items (not total quantity)
-- Hide the S&S checkbox when Quantity tab is active (per requirement to remove S&S filter)
-- New `renderQuantityCard(group)` function — simplified card with:
-  - Thumbnail, title (linked to Amazon), status badge ("Delivered")
-  - **New badge**: "Qty: X" showing total quantity
-  - **New badge**: "Every X mo" if frequency <= 12 months
-  - **S&S icon**: if any past order used S&S (meaning "S&S eligible")
-  - Price: show most recent unit price if available
-  - **Removed**: order date, return window, return policy icon, keep button
-- New `renderQuantityView()` function that deduplicates, aggregates, sorts by totalQuantity desc, and renders
-
-**Files to modify:**
-- `order_logic.js` — add `groupItemsByAsin(items)` pure function (testable)
-- `app.js` — add `renderQuantityCard()`, `renderQuantityView()`, update `refreshView()`, `filterItems()`, `computeTabCounts()`, hide/show S&S checkbox
-- `index.html` — add Quantity tab button
-- `style.css` — minor styling for qty/frequency badges
-- Tests: new unit tests for `groupItemsByAsin`, new E2E tests for the Quantity view
+Added a "Quantity" tab showing items ordered on multiple dates, acting as an S&S optimizer. Groups items by ASIN across all years, shows consumption-rate frequency ("Every X mo" or "Every X yr" for >18 mo), S&S icon from latest order, order count with date range, and most recent price. Pure logic in `groupItemsByAsin()` and `formatFrequency()` in `order_logic.js`. 24 unit tests, 11 E2E tests.
 
 ---
 
