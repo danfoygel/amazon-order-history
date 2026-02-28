@@ -236,11 +236,8 @@ function orderUrl(item) {
 // ---------------------------------------------------------------------------
 function effectiveStatus(item) {
   let status = deriveStatus(item.delivery_status, item.order_date, item.tracking_url);
-  // Digital items: empty delivery_status + is_digital flag from fetch_orders.py
-  if ((status === "Unknown" || status === "Delivered") && item.is_digital &&
-      !(item.delivery_status || "").trim()) {
-    return "Digital";
-  }
+  // Digital items: is_digital flag from fetch_orders.py
+  if (item.is_digital) return "Digital";
   // Apply known-issue overrides for items with degraded status data
   if (status === "Unknown" && item.item_id && KNOWN_STATUS_OVERRIDES[item.item_id]) {
     status = KNOWN_STATUS_OVERRIDES[item.item_id];

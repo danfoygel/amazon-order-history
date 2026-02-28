@@ -816,14 +816,10 @@ const GRAPH_STATUSES = [
   "Unknown",
 ];
 
-// Returns GRAPH_STATUSES filtered to omit "Unknown"/"Digital" when there are none.
+// Returns GRAPH_STATUSES filtered to only statuses with at least one item.
 function activeGraphStatuses() {
-  const hasUnknown = allItems.some(item => effectiveStatus(item) === "Unknown");
-  const hasDigital = allItems.some(item => effectiveStatus(item) === "Digital");
-  return GRAPH_STATUSES.filter(s =>
-    (s !== "Unknown" || hasUnknown) &&
-    (s !== "Digital" || hasDigital)
-  );
+  const present = new Set(allItems.map(item => effectiveStatus(item)));
+  return GRAPH_STATUSES.filter(s => present.has(s));
 }
 
 // Display labels for chart legends (where internal status name differs)
@@ -836,7 +832,7 @@ const GRAPH_STATUS_COLORS = {
   "Ordered":             "#6b7280",   // pending gray
   "Shipped":             "#2563eb",   // blue
   "Delivered":           "#16a34a",   // green
-  "Digital":             "#7c3aed",   // violet
+  "Digital":             "#0d9488",   // teal
   "Replacement Ordered": "#6d28d9",   // purple
   "Return Started":      "#d97706",   // amber
   "Return in Transit":   "#06b6d4",   // cyan (clearly distinct from blue)

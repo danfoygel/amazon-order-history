@@ -316,15 +316,14 @@ describe("effectiveStatus — digital items", () => {
     expect(effectiveStatus(item)).toBe("Digital");
   });
 
-  it('does not override non-empty delivery_status even if is_digital', () => {
-    // If Amazon gave a delivery_status, respect it
+  it('returns "Digital" even with non-empty delivery_status when is_digital', () => {
     const item = {
       delivery_status: "Cancelled",
       order_date: "2025-06-01",
       tracking_url: null,
       is_digital: true,
     };
-    expect(effectiveStatus(item)).toBe("Cancelled");
+    expect(effectiveStatus(item)).toBe("Digital");
   });
 
   it('returns normal status when is_digital is false', () => {
