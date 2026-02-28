@@ -118,12 +118,9 @@ function renderTabCounts(items) {
     if (countEl && counts[filter] !== undefined) {
       countEl.textContent = counts[filter];
     }
-    // Only show the Unknown/Digital tabs when there are items with that status
-    if (filter === "Unknown") {
-      btn.style.display = counts.Unknown > 0 ? "" : "none";
-    }
-    if (filter === "Digital") {
-      btn.style.display = counts.Digital > 0 ? "" : "none";
+    // Hide status tabs when their count is zero (keep action tabs and "all" always visible)
+    if (!btn.classList.contains("tab-action") && filter !== "all" && counts[filter] !== undefined) {
+      btn.style.display = counts[filter] > 0 ? "" : "none";
     }
   });
 }
@@ -371,17 +368,12 @@ function renderCombined(allFiltered) {
     "expected_delivery_asc"
   );
 
-  const digital = sortItems(
-    allFiltered.filter(i => effectiveStatus(i) === "Digital"),
-    "order_date_desc"
-  );
   const restItems = sortItems(
     allFiltered.filter(i => {
       const s = effectiveStatus(i);
       if ((s === "Return Started" || s === "Replacement Ordered") && !isKept(i)) return false;
       if (s === "Shipped") return false;
       if (s === "Ordered") return false;
-      if (s === "Digital") return false;
       if (s === "Delivered" && !isKept(i) && i.return_window_end && new Date(i.return_window_end + "T00:00:00") >= today) return false;
       return true;
     }),
@@ -413,7 +405,6 @@ function renderCombined(allFiltered) {
     { label: "Decide",    items: decide   },
     { label: "Shipped",   items: shipped  },
     { label: "Ordered",   items: ordered  },
-    { label: "Digital",   items: digital  },
   ];
 
   for (const { label, items } of fixedSections) {

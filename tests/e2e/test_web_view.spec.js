@@ -198,11 +198,11 @@ test.describe('Digital items', () => {
     await expect(tab).toBeVisible();
   });
 
-  test('Digital section appears in combined view', async ({ page }) => {
+  test('Digital items appear in monthly sections of combined view', async ({ page }) => {
     await loadApp(page);
-    // Combined view is the default tab
-    const heading = page.locator('.section-heading', { hasText: 'Digital' });
-    await expect(heading).toBeVisible();
+    // Digital items should appear in their month's section, not a separate Digital section
+    const digitalHeading = page.locator('.section-heading', { hasText: /^Digital/ });
+    await expect(digitalHeading).toHaveCount(0);
   });
 });
 
