@@ -281,3 +281,67 @@ describe("effectiveStatus", () => {
     expect(effectiveStatus(item)).toBe("Return Started");
   });
 });
+
+// ---------------------------------------------------------------------------
+// effectiveStatus — digital order detection
+// ---------------------------------------------------------------------------
+describe("effectiveStatus — digital items", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2025-06-11T12:00:00"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('returns "Digital" for recent digital item with empty delivery_status', () => {
+    const item = {
+      delivery_status: "",
+      order_date: "2025-06-10",
+      tracking_url: null,
+      is_digital: true,
+    };
+    expect(effectiveStatus(item)).toBe("Digital");
+  });
+
+  it('returns "Digital" for old digital item with empty delivery_status', () => {
+    // Normally an old item with empty delivery_status would be "Delivered"
+    const item = {
+      delivery_status: "",
+      order_date: "2025-01-01",
+      tracking_url: null,
+      is_digital: true,
+    };
+    expect(effectiveStatus(item)).toBe("Digital");
+  });
+
+  it('returns "Digital" even with non-empty delivery_status when is_digital', () => {
+    const item = {
+      delivery_status: "Cancelled",
+      order_date: "2025-06-01",
+      tracking_url: null,
+      is_digital: true,
+    };
+    expect(effectiveStatus(item)).toBe("Digital");
+  });
+
+  it('returns normal status when is_digital is false', () => {
+    const item = {
+      delivery_status: "",
+      order_date: "2025-06-10",
+      tracking_url: null,
+      is_digital: false,
+    };
+    expect(effectiveStatus(item)).toBe("Unknown");
+  });
+
+  it('returns normal status when is_digital is undefined', () => {
+    const item = {
+      delivery_status: "",
+      order_date: "2025-06-10",
+      tracking_url: null,
+    };
+    expect(effectiveStatus(item)).toBe("Unknown");
+  });
+});

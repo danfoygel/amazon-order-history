@@ -73,19 +73,20 @@ test.describe('Initial load (2025 data only)', () => {
   test('meta-bar shows partial item count with load-all link', async ({ page }) => {
     await loadApp(page);
     const metaText = await page.locator('#meta-bar').textContent();
-    // Should show "18 of 23 items" and "(load all)" link.
-    expect(metaText).toContain('18');
-    expect(metaText).toContain('23');
+    // Should show "19 of 24 items" and "(load all)" link.
+    expect(metaText).toContain('19');
+    expect(metaText).toContain('24');
     expect(metaText).toContain('(load all)');
   });
 
   test('tab counts are correct for 2025 data', async ({ page }) => {
     await loadApp(page);
 
-    expect(await tabCount(page, 'all')).toBe(18);
+    expect(await tabCount(page, 'all')).toBe(19);
     expect(await tabCount(page, 'Delivered')).toBe(8);
     expect(await tabCount(page, 'Shipped')).toBe(2);
     expect(await tabCount(page, 'Ordered')).toBe(2);
+    expect(await tabCount(page, 'Digital')).toBe(1);
     expect(await tabCount(page, 'Return Started')).toBe(2);
     expect(await tabCount(page, 'Replacement Ordered')).toBe(1);
     expect(await tabCount(page, 'Return in Transit')).toBe(1);
@@ -152,11 +153,11 @@ test.describe('Load all years', () => {
     });
 
     const metaText = await page.locator('#meta-bar').textContent();
-    expect(metaText).toContain('23');
+    expect(metaText).toContain('24');
     expect(metaText).not.toContain('(load all)');
 
     // Tab counts should update.
-    expect(await tabCount(page, 'all')).toBe(23);
+    expect(await tabCount(page, 'all')).toBe(24);
     expect(await tabCount(page, 'Delivered')).toBe(13);
     // Decide should include Swim Fins (item 20) now.
     expect(await tabCount(page, 'decide')).toBe(4);
@@ -171,6 +172,37 @@ test.describe('Load all years', () => {
     await page.waitForFunction(() => !document.getElementById('load-all-link'));
     await clickTab(page, 'Delivered');
     expect(await cardCount(page)).toBe(13);
+  });
+});
+
+test.describe('Digital items', () => {
+
+  test('Digital tab shows 1 card with TurboTax', async ({ page }) => {
+    await loadApp(page);
+    await clickTab(page, 'Digital');
+    expect(await cardCount(page)).toBe(1);
+    await expect(page.locator('.item-card', { hasText: 'TurboTax' })).toBeVisible();
+  });
+
+  test('Digital card has correct badge', async ({ page }) => {
+    await loadApp(page);
+    await clickTab(page, 'Digital');
+    const badge = page.locator('.item-card .badge-digital');
+    await expect(badge).toBeVisible();
+    await expect(badge).toHaveText('Digital');
+  });
+
+  test('Digital tab is visible when there are digital items', async ({ page }) => {
+    await loadApp(page);
+    const tab = page.locator('.tab[data-filter="Digital"]');
+    await expect(tab).toBeVisible();
+  });
+
+  test('Digital items appear in monthly sections of combined view', async ({ page }) => {
+    await loadApp(page);
+    // Digital items should appear in their month's section, not a separate Digital section
+    const digitalHeading = page.locator('.section-heading', { hasText: /^Digital/ });
+    await expect(digitalHeading).toHaveCount(0);
   });
 });
 
@@ -211,7 +243,7 @@ test.describe('Search filtering', () => {
     expect(await cardCount(page)).toBe(1);
     await page.fill('#search-input', '');
 
-    expect(await cardCount(page)).toBe(18);
+    expect(await cardCount(page)).toBe(19);
   });
 });
 
@@ -235,7 +267,7 @@ test.describe('Subscribe & Save filter', () => {
 
     await page.locator('#sns-filter').uncheck();
 
-    expect(await cardCount(page)).toBe(18);
+    expect(await cardCount(page)).toBe(19);
   });
 
   test('S&S count badge shows correct number', async ({ page }) => {
@@ -670,7 +702,7 @@ test.describe('Keyboard navigation', () => {
     await page.keyboard.press('Escape');
     const searchVal = await page.locator('#search-input').inputValue();
     expect(searchVal).toBe('');
-    expect(await cardCount(page)).toBe(18);
+    expect(await cardCount(page)).toBe(19);
   });
 
   test('keyboard shortcuts are suppressed when typing in the search bar', async ({ page }) => {

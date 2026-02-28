@@ -228,9 +228,9 @@ Moved recurring workflow instructions (worktree data symlink, TODO-driven planni
 
 ---
 
-## Item 34: Identify and display digital orders
+## Item 34: Identify and display digital orders ✅ (merged PR #63)
 
-Digital downloads (e.g. software, Kindle books) have empty `delivery_status` because there's no physical shipment. Currently these are indistinguishable from physical orders where Amazon simply dropped the tracking data. Investigate how to reliably detect digital orders (product category, ASIN patterns, order metadata) and give them a distinct status or visual indicator instead of lumping them in with empty-status physical orders. Example: order 114-2932976-0773838 (TurboTax Premier Desktop Edition 2025, PC/Mac Download).
+Added `detect_digital_item()` in `fetch_orders.py` that checks the `.yohtmlc-item-level-connections` div in order page HTML for digital library links (Software Library, Kindle Library, etc.). Digital items get a teal "Digital" badge, a dedicated tab (auto-hidden when count is zero), and appear in the graph. All status tabs now auto-hide when their count is zero.
 
 --- 
 

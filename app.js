@@ -84,6 +84,7 @@ function computeTabCounts(items) {
     Delivered: 0,
     Shipped: 0,
     Ordered: 0,
+    Digital: 0,
     Cancelled: 0,
     Unknown: 0,
     "Return Started": 0,
@@ -117,9 +118,9 @@ function renderTabCounts(items) {
     if (countEl && counts[filter] !== undefined) {
       countEl.textContent = counts[filter];
     }
-    // Only show the Unknown tab when there are items with that status
-    if (filter === "Unknown") {
-      btn.style.display = counts.Unknown > 0 ? "" : "none";
+    // Hide status tabs when their count is zero (keep action tabs and "all" always visible)
+    if (!btn.classList.contains("tab-action") && filter !== "all" && counts[filter] !== undefined) {
+      btn.style.display = counts[filter] > 0 ? "" : "none";
     }
   });
 }
@@ -162,6 +163,7 @@ function statusBadgeHtml(status) {
     "Return in Transit":   ["badge-return-transit",  "Return in Transit"],
     "Return Complete":     ["badge-return-complete", "Return Complete"],
     "Replacement Ordered": ["badge-replacement",     "Replacement"],
+    "Digital":             ["badge-digital",          "Digital"],
     "Unknown":             ["badge-unknown",         "Unknown"],
   };
   const [cls, label] = map[status] || ["badge-pending", status || "Unknown"];
@@ -365,6 +367,7 @@ function renderCombined(allFiltered) {
     allFiltered.filter(i => effectiveStatus(i) === "Ordered"),
     "expected_delivery_asc"
   );
+
   const restItems = sortItems(
     allFiltered.filter(i => {
       const s = effectiveStatus(i);
@@ -804,6 +807,7 @@ const GRAPH_STATUSES = [
   "Ordered",
   "Shipped",
   "Delivered",
+  "Digital",
   "Replacement Ordered",
   "Return Started",
   "Return in Transit",
@@ -812,10 +816,10 @@ const GRAPH_STATUSES = [
   "Unknown",
 ];
 
-// Returns GRAPH_STATUSES filtered to omit "Unknown" when there are none.
+// Returns GRAPH_STATUSES filtered to only statuses with at least one item.
 function activeGraphStatuses() {
-  const hasUnknown = allItems.some(item => effectiveStatus(item) === "Unknown");
-  return hasUnknown ? GRAPH_STATUSES : GRAPH_STATUSES.filter(s => s !== "Unknown");
+  const present = new Set(allItems.map(item => effectiveStatus(item)));
+  return GRAPH_STATUSES.filter(s => present.has(s));
 }
 
 // Display labels for chart legends (where internal status name differs)
@@ -828,6 +832,7 @@ const GRAPH_STATUS_COLORS = {
   "Ordered":             "#6b7280",   // pending gray
   "Shipped":             "#2563eb",   // blue
   "Delivered":           "#16a34a",   // green
+  "Digital":             "#0d9488",   // teal
   "Replacement Ordered": "#6d28d9",   // purple
   "Return Started":      "#d97706",   // amber
   "Return in Transit":   "#06b6d4",   // cyan (clearly distinct from blue)

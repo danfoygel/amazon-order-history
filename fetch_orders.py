@@ -195,6 +195,35 @@ def extract_return_info(item) -> tuple[str | None, str | None]:
     return None, None  # ambiguous: no return info found
 
 
+def detect_digital_item(item) -> bool:
+    """Check item.parsed HTML for digital order indicators.
+
+    Amazon's order detail page shows specific links for digital items such as
+    'Go to Your Software Library' or 'Go to Your Kindle Library' in the
+    item-level connections area.  Returns True if any such indicator is found.
+    """
+    parsed = getattr(item, "parsed", None)
+    if parsed is None:
+        return False
+
+    # Check all link text in the connections area for digital library references
+    connections = parsed.select_one(".yohtmlc-item-level-connections")
+    if connections is None:
+        return False
+
+    text = connections.get_text(" ", strip=True).lower()
+    digital_indicators = [
+        "software library",
+        "kindle library",
+        "games & software library",
+        "games &amp; software library",
+        "digital library",
+        "your music library",
+        "your video library",
+    ]
+    return any(indicator in text for indicator in digital_indicators)
+
+
 # ---------------------------------------------------------------------------
 # ASIN product-page cache
 # ---------------------------------------------------------------------------
@@ -478,6 +507,7 @@ def build_item_record(order, shipment, item, item_id: str) -> dict:
     # The fallback order_date+30 default has been removed — null is more accurate
     # than a synthetic date when Amazon doesn't show return eligibility.
     return_window_end, return_policy = extract_return_info(item)
+    is_digital = detect_digital_item(item)
 
     raw_delivery_status = getattr(shipment, "delivery_status", None) or ""
     tracking_url = getattr(shipment, "tracking_link", None)
@@ -510,6 +540,7 @@ def build_item_record(order, shipment, item, item_id: str) -> dict:
         "return_initiated_date": None,
         "return_notes":          "",
         "subscribe_and_save":    getattr(order, "subscription_discount", None) is not None,
+        "is_digital":            is_digital,
     }
 
 
