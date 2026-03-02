@@ -572,7 +572,7 @@ document.querySelectorAll(".tab").forEach(btn => {
 
 /** Fetch a JSON file and return its parsed content. */
 async function loadJson(url) {
-  const resp = await fetch(url);
+  const resp = await fetch(url, { cache: "no-store" });
   if (!resp.ok) throw new Error(`Failed to load ${url}: ${resp.status}`);
   return resp.json();
 }
