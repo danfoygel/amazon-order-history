@@ -61,10 +61,10 @@ Each command takes a minute or two per year fetched.
 
 ### 4. Open the app
 
-Serve the directory with Python's built-in server:
+Serve the directory with the included server (supports ETag-based caching so data files are always fresh):
 
 ```
-python3 -m http.server 8080
+python3 server.py
 ```
 
 Then open [http://localhost:8080](http://localhost:8080).

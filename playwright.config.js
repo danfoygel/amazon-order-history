@@ -11,7 +11,7 @@ module.exports = defineConfig({
     baseURL: 'http://localhost:8456',
   },
   webServer: {
-    command: 'python3 -m http.server 8456',
+    command: 'python3 server.py 8456',
     port: 8456,
     reuseExistingServer: !process.env.CI,
   },
