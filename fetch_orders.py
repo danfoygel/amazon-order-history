@@ -140,14 +140,7 @@ def _parse_return_date(text: str) -> str | None:
 
 
 def extract_return_info(item) -> tuple[str | None, str | None]:
-    """Read item.parsed HTML to determine return window end date and a
-    preliminary return policy hint.
-
-    NOTE: The return_policy value returned here is a best-effort heuristic
-    derived from the order detail page and may be inaccurate (e.g. Amazon
-    shows a return window for non-returnable food/supplement items).
-    enrich_items_with_asin_cache() fetches each item's product page and
-    overrides return_policy with the authoritative value when it finds one.
+    """Read item.parsed HTML to determine return window end date and policy.
 
     Returns (return_window_end, return_policy) where return_policy is one of:
       "free_or_replace"  — "Return or replace items" text found (Amazon-fulfilled;
@@ -182,7 +175,6 @@ def extract_return_info(item) -> tuple[str | None, str | None]:
             date_str = _parse_return_date(text)
             # Window is closed — we know the item was returnable, but we can't
             # distinguish free_or_replace vs return_only from the closed text.
-            # Use None for policy so the ASIN cache can provide the real answer.
             return date_str, None
 
     # No return span — check whether the item-level connections div is empty.
@@ -193,277 +185,6 @@ def extract_return_info(item) -> tuple[str | None, str | None]:
         return None, "non_returnable"
 
     return None, None  # ambiguous: no return info found
-
-
-# ---------------------------------------------------------------------------
-# ASIN product-page cache
-# ---------------------------------------------------------------------------
-
-ASIN_CACHE_PATH = "data/asin_cache.json"
-
-
-def load_asin_cache() -> dict:
-    """Load data/asin_cache.json, returning {} if absent or unreadable."""
-    if not os.path.exists(ASIN_CACHE_PATH):
-        return {}
-    try:
-        with open(ASIN_CACHE_PATH, encoding="utf-8") as f:
-            return json.load(f)
-    except Exception as exc:
-        print(f"Warning: could not read ASIN cache ({exc}); starting fresh.")
-        return {}
-
-
-def save_asin_cache(cache: dict) -> None:
-    """Write the ASIN cache to disk, creating data/ if needed."""
-    os.makedirs("data", exist_ok=True)
-    with open(ASIN_CACHE_PATH, "w", encoding="utf-8") as f:
-        json.dump(cache, f, indent=2, sort_keys=True)
-        f.write("\n")
-
-
-_PRODUCT_PAGE_HEADERS = {
-    # Use a real browser UA so Amazon returns product pages rather than 503s.
-    # The amazonorders session defaults to 'python-requests/…' which is
-    # immediately flagged and receives service-unavailable error pages.
-    "User-Agent": (
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/121.0.0.0 Safari/537.36"
-    ),
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.9",
-    "Accept-Encoding": "gzip, deflate, br",
-    "Connection": "keep-alive",
-    "Upgrade-Insecure-Requests": "1",
-}
-
-
-def fetch_product_page_info(
-    session, asin: str, verbose: bool = False, max_retries: int = 3
-) -> "tuple[dict | None, str | None]":
-    """GET the product detail page for one ASIN and extract cacheable fields.
-
-    Returns:
-        (dict, None)   — successful fetch; individual field values may be None
-                         if the signal wasn't found on the page.
-        (None, str)    — failure; str describes the reason (HTTP status, exception
-                         message, etc.).  Caller may cache permanent errors (e.g.
-                         404) to avoid re-fetching on subsequent runs.
-
-    Retries up to max_retries times with exponential backoff (1 s, 2 s, 4 s …)
-    on transient errors (5xx, 429, network exceptions).  Permanent failures
-    (404, 403, etc.) are returned immediately without retrying.
-
-    Currently extracted fields:
-        return_policy  "free_or_replace" | "non_returnable" | None
-    """
-    # HTTP status codes worth retrying (transient server-side errors).
-    RETRYABLE_STATUSES = {429, 500, 502, 503, 504}
-
-    url = f"https://www.amazon.com/dp/{asin}"
-    last_reason: str = "unknown error"
-    for attempt in range(1, max_retries + 1):
-        try:
-            resp = session.session.get(url, headers=_PRODUCT_PAGE_HEADERS, timeout=15)
-            if resp.status_code != 200:
-                last_reason = f"HTTP {resp.status_code}"
-                if resp.status_code not in RETRYABLE_STATUSES or attempt == max_retries:
-                    if verbose:
-                        suffix = (
-                            f" after {max_retries} attempts"
-                            if attempt == max_retries and resp.status_code in RETRYABLE_STATUSES
-                            else ""
-                        )
-                        print(f"    [{asin}] {last_reason}{suffix}")
-                    return None, last_reason
-                wait = 2 ** (attempt - 1)
-                if verbose:
-                    print(
-                        f"    [{asin}] {last_reason} — retrying in {wait}s"
-                        f" (attempt {attempt}/{max_retries})…"
-                    )
-                time.sleep(wait)
-                continue
-            # 200 OK — parse the page
-            soup = _BeautifulSoup(resp.text, "html.parser")
-            # Strip customer-review sections to avoid false positives from review text
-            for el in soup.select("#customerReviews, #reviews-medley, #cr-medley"):
-                el.decompose()
-            text = soup.get_text(" ", strip=True).lower()
-            result: dict = {}
-            if "non-returnable" in text:
-                result["return_policy"] = "non_returnable"
-            elif "free returns" in text:
-                result["return_policy"] = "free_or_replace"
-            else:
-                result["return_policy"] = None  # page loaded but no clear signal
-            if verbose:
-                print(f"    [{asin}] return_policy = {result['return_policy']!r}")
-            return result, None
-        except Exception as exc:
-            last_reason = str(exc)
-            if attempt == max_retries:
-                if verbose:
-                    print(f"    [{asin}] error: {last_reason} after {max_retries} attempts")
-                return None, last_reason
-            wait = 2 ** (attempt - 1)
-            if verbose:
-                print(
-                    f"    [{asin}] error: {last_reason} — retrying in {wait}s"
-                    f" (attempt {attempt}/{max_retries})…"
-                )
-            time.sleep(wait)
-    return None, last_reason  # unreachable, but satisfies the type checker
-
-
-class _AsinFetchProgress:
-    """
-    Lightweight progress display for the sequential ASIN product-page fetch loop.
-
-    Unlike FetchProgress (which hooks into async library internals to learn the
-    total count and receive per-order callbacks), product page fetching is a
-    simple sequential loop — so all we need is a background timer and an
-    on_done() call after each ASIN attempt.
-
-    Non-verbose mode: a single \\r line showing N/total (pct%) [elapsed],
-    updated after each ASIN and once per second by the timer thread.
-    Verbose mode: no \\r tricks; each ASIN is already logged by the caller.
-    """
-
-    def __init__(self, total: int, verbose: bool = False):
-        self._total = total
-        self._verbose = verbose
-        self._processed = 0          # ASINs attempted so far (success or failure)
-        self._lock = threading.Lock()
-        self._t0 = time.monotonic()
-        self._stop_event = threading.Event()
-        if not verbose:
-            self._timer: "threading.Thread | None" = threading.Thread(
-                target=self._tick, daemon=True
-            )
-            self._timer.start()
-        else:
-            self._timer = None
-
-    def _elapsed(self) -> str:
-        secs = int(time.monotonic() - self._t0)
-        return f"{secs // 60}:{secs % 60:02d}"
-
-    def _format_line(self) -> str:
-        with self._lock:
-            processed = self._processed
-        pct = processed / self._total * 100 if self._total else 0
-        return f"  product pages: {processed}/{self._total} ({pct:.0f}%)  [{self._elapsed()}]"
-
-    def _redraw(self):
-        sys.stdout.write(f"\r{self._format_line():<72}")
-        sys.stdout.flush()
-
-    def _tick(self):
-        while not self._stop_event.wait(timeout=1):
-            self._redraw()
-
-    def on_done(self):
-        """Call after each ASIN attempt completes (success or failure)."""
-        with self._lock:
-            self._processed += 1
-        if not self._verbose:
-            self._redraw()
-
-    def finish(self, fetched: int, failures: "list[tuple[str, str]]") -> None:
-        """Stop the timer and write the final summary line + per-ASIN warnings."""
-        self._stop_event.set()
-        if self._timer:
-            self._timer.join(timeout=2)
-        elapsed = self._elapsed()
-        if not self._verbose:
-            final = f"  product pages: {fetched}/{self._total}  [{elapsed}]"
-            sys.stdout.write(f"\r{final:<72}\n")
-            sys.stdout.flush()
-            not_found = [asin for asin, reason in failures if reason == "HTTP 404"]
-            other = [(asin, reason) for asin, reason in failures if reason != "HTTP 404"]
-            for asin, reason in other:
-                print(f"    Warning: [{asin}] {reason}")
-            if not_found:
-                print(f"    ({len(not_found)} ASIN(s) returned 404 — likely discontinued or delisted)")
-
-
-def enrich_items_with_asin_cache(
-    items: list,
-    session,
-    verbose: bool = False,
-) -> None:
-    """Fetch product pages for uncached ASINs; apply cached data to all items.
-
-    Modifies items in-place.  Updates data/asin_cache.json with new entries.
-    Permanent errors (HTTP 404) are also cached to avoid re-fetching.
-
-    Fields applied from cache:
-        return_policy   — product-page value overrides the order-page heuristic
-                          when the product page gives a definitive answer
-                          (non-None); a None from the product page means "couldn't
-                          determine", so the order-page value is kept as fallback.
-        return_window_end — cleared to None for non_returnable items (a date
-                            for a non-returnable item would be misleading).
-    """
-    cache = load_asin_cache()
-
-    unique_asins = {item["asin"] for item in items if item.get("asin")}
-    uncached = sorted(unique_asins - set(cache))
-
-    # Standard Amazon ASINs start with B; ISBN-10 codes (books) use digit-only
-    # strings and consistently return HTTP 500 via /dp/ — skip them.
-    AMAZON_ASIN_RE = re.compile(r"^B[A-Z0-9]{9}$")
-    uncached = [a for a in uncached if AMAZON_ASIN_RE.match(a)]
-
-    if uncached:
-        print(f"Fetching product pages for {len(uncached)} new ASIN(s)…")
-        fetched = 0
-        failures: list[tuple[str, str]] = []  # (asin, reason)
-        progress = _AsinFetchProgress(len(uncached), verbose=verbose)
-        for i, asin in enumerate(uncached, 1):
-            if verbose:
-                print(f"  [{i}/{len(uncached)}] {asin}")
-            info, err = fetch_product_page_info(session, asin, verbose=verbose)
-            now = datetime.datetime.now(datetime.UTC).isoformat()
-            if info is not None:
-                info["_fetched_at"] = now
-                cache[asin] = info
-                fetched += 1
-            else:
-                reason = err or "unknown error"
-                failures.append((asin, reason))
-                # Cache permanent errors (404) so we don't re-fetch every run.
-                if err and "404" in err:
-                    cache[asin] = {"_error": reason, "_fetched_at": now}
-            progress.on_done()
-            time.sleep(1.0)  # polite pacing between requests
-
-        progress.finish(fetched, failures)
-        save_asin_cache(cache)
-        if verbose:
-            print(f"  ASIN cache: {len(cache)} total entries after update.")
-
-    # Apply cached fields to every item in the list
-    updated = 0
-    for item in items:
-        asin = item.get("asin")
-        if not asin or asin not in cache:
-            continue
-        cached = cache[asin]
-        if "_error" in cached:
-            continue  # permanent error entry — no data to apply
-        policy = cached.get("return_policy")
-        # Only override when the product page gave a definitive (non-None) answer.
-        # None means "page loaded but no clear signal" — keep the order-page hint.
-        if policy is not None:
-            item["return_policy"] = policy
-            if policy == "non_returnable":
-                item["return_window_end"] = None
-            updated += 1
-    if verbose and updated:
-        print(f"  Applied ASIN cache to {updated} item(s).")
 
 
 # ---------------------------------------------------------------------------
@@ -1032,7 +753,6 @@ def main():
         if verbose:
             print(f"  [summary] Built {len(items)} item records from {len(raw_orders)} orders")
         warn_status_errors(items)
-        enrich_items_with_asin_cache(items, session, verbose=verbose)
         write_output(items, year, email=email)
 
     else:
@@ -1049,7 +769,6 @@ def main():
         if verbose:
             print(f"  [summary] Built {len(new_items)} item records from {len(raw_orders)} orders")
         warn_status_errors(new_items)
-        enrich_items_with_asin_cache(new_items, session, verbose=verbose)
 
         # Partition new items by calendar year
         by_year: dict[int, list[dict]] = {}

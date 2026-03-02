@@ -64,7 +64,7 @@ Added a "Quantity" tab showing items ordered on multiple dates, acting as an S&S
 
 ## Item 11b: S&S eligibility enrichment
 
-Add S&S eligibility detection to `fetch_orders.py`'s ASIN cache (similar to how return policy is fetched from product pages). Scrape each product's Amazon page to determine if it offers Subscribe & Save, and store the result in `asin_cache.json`. The Quantity view can then show the S&S icon for truly eligible items, not just ones previously ordered via S&S.
+Detect S&S eligibility for items in the Quantity view. Currently only items previously ordered via S&S show the icon. Needs a way to determine if a product offers Subscribe & Save (e.g. scraping the product page). The Quantity view could then show the S&S icon for truly eligible items.
 
 ---
 
