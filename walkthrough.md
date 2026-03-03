@@ -43,7 +43,7 @@ find . -maxdepth 1 -not -name ".*" -not -name walkthrough.md -not -name __pycach
 ./style.css
 ```
 
-The `data/` directory (git-ignored) holds generated output: per-year JS data files (`app_data_YYYY.js`), a manifest (`app_data_manifest.js`), and an ASIN cache (`asin_cache.json`). A `.env` file (also git-ignored) stores Amazon credentials.
+The `data/` directory (git-ignored) holds generated output: per-year JS data files (`app_data_YYYY.js`) and a manifest (`app_data_manifest.js`). A `.env` file (also git-ignored) stores Amazon credentials.
 
 Let's look at what dependencies the Python backend needs.
 
@@ -184,255 +184,14 @@ The ASIN regex matches both `/dp/B0123456789` and `/gp/product/B0123456789` URL 
 
 ### Return Policy Extraction from Order Pages
 
-This is one of the trickiest parts of the backend. Amazon's order detail pages embed return eligibility info in HTML, but the format is fragile and changes over time. The script uses a two-tier approach:
+Amazon's order detail pages embed return eligibility info in HTML, but the format is fragile and changes over time. The `extract_return_info` function parses each item's order-page HTML to extract the return window end date and policy:
 
-1. **Order page heuristic** (`extract_return_info`) — parses the order detail HTML for return window dates and policy hints
-2. **Product page override** (`fetch_product_page_info` + ASIN cache) — fetches each product's standalone page for a definitive answer
-
-Here's the order-page extractor:
-
-```bash
-sed -n '151,197p' fetch_orders.py
-```
-
-```output
-def extract_return_info(item) -> tuple[str | None, str | None]:
-    """Read item.parsed HTML to determine return window end date and a
-    preliminary return policy hint.
-
-    NOTE: The return_policy value returned here is a best-effort heuristic
-    derived from the order detail page and may be inaccurate (e.g. Amazon
-    shows a return window for non-returnable food/supplement items).
-    enrich_items_with_asin_cache() fetches each item's product page and
-    overrides return_policy with the authoritative value when it finds one.
-
-    Returns (return_window_end, return_policy) where return_policy is one of:
-      "free_or_replace"  — "Return or replace items" text found (Amazon-fulfilled;
-                           replacement option indicates likely free returns)
-      "return_only"      — "Return items" text found (return-only, possibly
-                           third-party seller; may or may not be free)
-      "non_returnable"   — no return span AND connections div is completely empty
-                           (characteristic of food, consumables, and similar
-                           non-returnable categories on the order page)
-      None               — ambiguous (no return span but connections div has
-                           content, e.g. expired window on a normal item)
-    """
-    parsed = getattr(item, "parsed", None)
-    if parsed is None:
-        return None, None
-
-    # Amazon's current HTML puts return eligibility in a span.a-size-small that
-    # contains the text "Eligible through".  The older data-component selector
-    # (data-component='itemReturnEligibility') is no longer used by Amazon.
-    for span in parsed.select("span.a-size-small"):
-        text = span.get_text(" ", strip=True)
-        lower = text.lower()
-        if "eligible through" not in lower:
-            continue
-        date_str = _parse_return_date(text)
-        if "return or replace items" in lower:
-            return date_str, "free_or_replace"
-        else:
-            return date_str, "return_only"
-
-    # No return span — check whether the item-level connections div is empty.
-    # A completely empty div (no Buy-it-again, no return buttons) is the pattern
-    # seen for non-returnable items (food, supplements, consumables, etc.).
-    connections = parsed.select_one(".yohtmlc-item-level-connections")
-    if connections is not None and not connections.get_text(strip=True):
-        return None, "non_returnable"
-
-    return None, None  # ambiguous: expired window or unknown
-```
-
-The function classifies items into three return policy categories by examining the order page HTML:
-
-- **`free_or_replace`** — Amazon sees "Return or replace items" text, meaning it's Amazon-fulfilled with free returns
+- **`free_or_replace`** — "Return or replace items" text found (Amazon-fulfilled with free returns)
 - **`return_only`** — "Return items" text (third-party seller, returns may not be free)
 - **`non_returnable`** — no return span *and* the connections div is empty (food, supplements, consumables)
+- **`None`** — ambiguous (e.g. expired return window where policy can't be determined from the closed text)
 
 The date is extracted using `dateutil.parser.parse()` with fuzzy matching, which handles text like "Eligible through March 22, 2026".
-
-But the order page is unreliable — Amazon sometimes shows return windows for non-returnable items. So the ASIN cache provides a second, authoritative layer.
-
-### ASIN Product Page Cache
-
-The script maintains a persistent JSON cache at `data/asin_cache.json`. For each new ASIN it encounters, it fetches the product's standalone page and checks for definitive "free returns" or "non-returnable" signals:
-
-```bash
-sed -n '244,324p' fetch_orders.py
-```
-
-```output
-def fetch_product_page_info(
-    session, asin: str, verbose: bool = False, max_retries: int = 3
-) -> "tuple[dict | None, str | None]":
-    """GET the product detail page for one ASIN and extract cacheable fields.
-
-    Returns:
-        (dict, None)   — successful fetch; individual field values may be None
-                         if the signal wasn't found on the page.
-        (None, str)    — failure; str describes the reason (HTTP status, exception
-                         message, etc.).  Caller should not cache this result.
-
-    Retries up to max_retries times with exponential backoff (1 s, 2 s, 4 s …)
-    on transient errors (5xx, 429, network exceptions).  Permanent failures
-    (404, 403, etc.) are returned immediately without retrying.
-
-    Currently extracted fields:
-        return_policy  "free_or_replace" | "non_returnable" | None
-    """
-    if _BeautifulSoup is None:
-        reason = "bs4 not installed — cannot fetch product page"
-        if verbose:
-            print(f"    [{asin}] {reason}")
-        return None, reason
-
-    # HTTP status codes worth retrying (transient server-side errors).
-    RETRYABLE_STATUSES = {429, 500, 502, 503, 504}
-
-    url = f"https://www.amazon.com/dp/{asin}"
-    last_reason: str = "unknown error"
-    for attempt in range(1, max_retries + 1):
-        try:
-            resp = session.session.get(url, headers=_PRODUCT_PAGE_HEADERS, timeout=15)
-            if resp.status_code != 200:
-                last_reason = f"HTTP {resp.status_code}"
-                if resp.status_code not in RETRYABLE_STATUSES or attempt == max_retries:
-                    if verbose:
-                        suffix = (
-                            f" after {max_retries} attempts"
-                            if attempt == max_retries and resp.status_code in RETRYABLE_STATUSES
-                            else ""
-                        )
-                        print(f"    [{asin}] {last_reason}{suffix}")
-                    return None, last_reason
-                wait = 2 ** (attempt - 1)
-                if verbose:
-                    print(
-                        f"    [{asin}] {last_reason} — retrying in {wait}s"
-                        f" (attempt {attempt}/{max_retries})…"
-                    )
-                time.sleep(wait)
-                continue
-            # 200 OK — parse the page
-            soup = _BeautifulSoup(resp.text, "html.parser")
-            # Strip customer-review sections to avoid false positives from review text
-            for el in soup.select("#customerReviews, #reviews-medley, #cr-medley"):
-                el.decompose()
-            text = soup.get_text(" ", strip=True).lower()
-            result: dict = {}
-            if "non-returnable" in text:
-                result["return_policy"] = "non_returnable"
-            elif "free returns" in text:
-                result["return_policy"] = "free_or_replace"
-            else:
-                result["return_policy"] = None  # page loaded but no clear signal
-            if verbose:
-                print(f"    [{asin}] return_policy = {result['return_policy']!r}")
-            return result, None
-        except Exception as exc:
-            last_reason = str(exc)
-            if attempt == max_retries:
-                if verbose:
-                    print(f"    [{asin}] error: {last_reason} after {max_retries} attempts")
-                return None, last_reason
-            wait = 2 ** (attempt - 1)
-            if verbose:
-                print(
-                    f"    [{asin}] error: {last_reason} — retrying in {wait}s"
-                    f" (attempt {attempt}/{max_retries})…"
-                )
-            time.sleep(wait)
-    return None, last_reason  # unreachable, but satisfies the type checker
-```
-
-Key details in the product page fetcher:
-
-- **Browser User-Agent**: Uses a Chrome UA string — Amazon's servers return 503 errors for the default `python-requests` UA
-- **Review stripping**: Removes `#customerReviews` and similar sections before text scanning, since a customer review saying "non-returnable" would be a false positive
-- **Retry with backoff**: 5xx and 429 errors get exponential backoff retries (1s, 2s, 4s); permanent failures (404, 403) bail immediately
-- **ISBN-10 filtering**: Books use ISBN-10 codes (all digits) instead of ASINs (start with B). Product pages for ISBNs consistently return HTTP 500, so they're skipped
-
-The `enrich_items_with_asin_cache` function ties it all together — it finds uncached ASINs, fetches their product pages, saves the cache, then applies cached data to all items:
-
-```bash
-sed -n '399,465p' fetch_orders.py
-```
-
-```output
-def enrich_items_with_asin_cache(
-    items: list,
-    session,
-    verbose: bool = False,
-) -> None:
-    """Fetch product pages for uncached ASINs; apply cached data to all items.
-
-    Modifies items in-place.  Updates data/asin_cache.json with new entries.
-
-    Fields applied from cache:
-        return_policy   — product-page value overrides the order-page heuristic
-                          when the product page gives a definitive answer
-                          (non-None); a None from the product page means "couldn't
-                          determine", so the order-page value is kept as fallback.
-        return_window_end — cleared to None for non_returnable items (a date
-                            for a non-returnable item would be misleading).
-    """
-    cache = load_asin_cache()
-
-    unique_asins = {item["asin"] for item in items if item.get("asin")}
-    uncached = sorted(unique_asins - set(cache))
-
-    # Standard Amazon ASINs start with B; ISBN-10 codes (books) use digit-only
-    # strings and consistently return HTTP 500 via /dp/ — skip them.
-    AMAZON_ASIN_RE = re.compile(r"^B[A-Z0-9]{9}$")
-    uncached = [a for a in uncached if AMAZON_ASIN_RE.match(a)]
-
-    if uncached:
-        print(f"Fetching product pages for {len(uncached)} new ASIN(s)…")
-        fetched = 0
-        failures: list[tuple[str, str]] = []  # (asin, reason)
-        progress = _AsinFetchProgress(len(uncached), verbose=verbose)
-        for i, asin in enumerate(uncached, 1):
-            if verbose:
-                print(f"  [{i}/{len(uncached)}] {asin}")
-            info, err = fetch_product_page_info(session, asin, verbose=verbose)
-            if info is not None:
-                info["_fetched_at"] = datetime.datetime.now(datetime.UTC).isoformat()
-                cache[asin] = info
-                fetched += 1
-            else:
-                failures.append((asin, err or "unknown error"))
-            progress.on_done()
-            time.sleep(1.0)  # polite pacing between requests
-
-        progress.finish(fetched, failures)
-        save_asin_cache(cache)
-        if verbose:
-            print(f"  ASIN cache: {len(cache)} total entries after update.")
-
-    # Apply cached fields to every item in the list
-    updated = 0
-    for item in items:
-        asin = item.get("asin")
-        if not asin or asin not in cache:
-            continue
-        cached = cache[asin]
-        policy = cached.get("return_policy")
-        # Only override when the product page gave a definitive (non-None) answer.
-        # None means "page loaded but no clear signal" — keep the order-page hint.
-        if policy is not None:
-            item["return_policy"] = policy
-            if policy == "non_returnable":
-                item["return_window_end"] = None
-            updated += 1
-    if verbose and updated:
-        print(f"  Applied ASIN cache to {updated} item(s).")
-```
-
-The override logic is carefully layered: a `None` from the product page means "couldn't determine" — in that case, the order-page heuristic is kept as a fallback. Only a definitive `"non_returnable"` or `"free_or_replace"` from the product page overrides. And for non-returnable items, the return window date is also cleared to `None` since it would be misleading.
-
-The 1-second `time.sleep()` between requests provides polite pacing to avoid getting rate-limited.
 
 ### Building Item Records
 
@@ -662,7 +421,6 @@ sed -n '971,987p' fetch_orders.py
         items = build_items_from_orders(raw_orders)
         if verbose:
             print(f"  [summary] Built {len(items)} item records from {len(raw_orders)} orders")
-        enrich_items_with_asin_cache(items, session, verbose=verbose)
         _preserve_return_window(items, existing_by_id)
         write_output(items, year, email=email)
 ```
@@ -685,8 +443,6 @@ sed -n '989,1060p' fetch_orders.py
         new_items = build_items_from_orders(raw_orders)
         if verbose:
             print(f"  [summary] Built {len(new_items)} item records from {len(raw_orders)} orders")
-        enrich_items_with_asin_cache(new_items, session, verbose=verbose)
-
         # Partition new items by calendar year
         by_year: dict[int, list[dict]] = {}
         for item in new_items:
@@ -1761,22 +1517,16 @@ Here's the complete pipeline from Amazon to browser:
 │     Each item: order info + shipment info + item info           │
 │     ASIN extracted from product URL, carrier from tracking URL  │
 ├─────────────────────────────────────────────────────────────────┤
-│  4. ENRICH                                                      │
-│     enrich_items_with_asin_cache()                              │
-│     → Fetch product pages for new ASINs                         │
-│     → Apply cached return_policy to all items                   │
-│     → Save updated cache to data/asin_cache.json                │
-├─────────────────────────────────────────────────────────────────┤
-│  5. MERGE                                                       │
+│  4. MERGE                                                       │
 │     Load existing year files from disk                          │
 │     Preserve return_window_end for Return Started items         │
 │     Keep older items + replace with fresh items                 │
 ├─────────────────────────────────────────────────────────────────┤
-│  6. WRITE                                                       │
+│  5. WRITE                                                       │
 │     write_output() → data/app_data_YYYY.js                     │
 │     write_manifest() → data/app_data_manifest.js               │
 ├─────────────────────────────────────────────────────────────────┤
-│  7. VIEW                                                        │
+│  6. VIEW                                                        │
 │     Open index.html → loads manifest → loads recent year files  │
 │     app.js derives status, filters, sorts, renders cards        │
 │     User: search, filter by tab, toggle S&S, mark "Keep"       │

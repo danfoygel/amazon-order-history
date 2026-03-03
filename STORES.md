@@ -31,7 +31,7 @@ We use the **[amazon-orders](https://github.com/alexdlaird/amazon-orders)** Pyth
 ### Key implementation details
 - ASIN is extracted via regex from item links (the library doesn't expose it directly).
 - Carrier is detected from tracking-URL domain patterns.
-- Product-page fetches (`data/asin_cache.json`) enrich return-policy data, with 1 s pacing between requests.
+- Return policy is extracted from order-page HTML (free_or_replace, return_only, non_returnable).
 - Output: JavaScript data files (`window.ORDER_DATA_YYYY`) + a manifest file for the browser app.
 
 ---
